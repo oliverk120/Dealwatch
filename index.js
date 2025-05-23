@@ -234,11 +234,11 @@ http.createServer((req, res) => {
                                         const subInputs = cat.subcategories
                                             .map(
                                                 (sub) => `
-                                                    <div class="mb-2 space-y-1">
-                                                        <input class="border p-1 w-full" type="text" name="subcategory${idx + 1}Title" value="${sub.title}" placeholder="Title" />
-                                                        <textarea class="border p-1 w-full" name="subcategory${idx + 1}Desc" placeholder="Description">${sub.description}</textarea>
-                                                        <input class="border p-1 w-full" type="text" name="subcategory${idx + 1}Keywords" value="${sub.keywords.join(", ")}" placeholder="Keywords" />
-                                                        <button type="button" class="bg-red-500 text-white px-2 py-1 rounded" onclick="this.parentNode.remove()">Remove</button>
+                                                    <div class="mb-2 flex flex-wrap items-center space-x-2">
+                                                        <input class="border p-1 flex-1" type="text" name="subcategory${idx + 1}Title" value="${sub.title}" placeholder="Title" />
+                                                        <textarea class="border p-1 flex-1" name="subcategory${idx + 1}Desc" placeholder="Description">${sub.description}</textarea>
+                                                        <input class="border p-1 flex-1" type="text" name="subcategory${idx + 1}Keywords" value="${sub.keywords.join(", ")}" placeholder="Keywords" />
+                                                        <button type="button" class="text-red-500 font-bold px-2" onclick="this.parentNode.remove()">&#x2716;</button>
                                                     </div>`
                                             )
                                             .join("");
@@ -307,9 +307,10 @@ http.createServer((req, res) => {
                                                     .join(" ");
 
                                                 const subCols = subSimilarities
-                                                    .map((sim) => `<td class="border px-2 py-1">${sim.toFixed(2)}</td>`)
+                                                    .map((sim) => `<td class="border px-2 py-1${sim >= 0.8 ? ' font-bold bg-yellow-100' : ''}">${sim.toFixed(2)}</td>`)
                                                     .join("");
-                                                return `<tr${highlightClass}><td class="border px-2 py-1">${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a></td><td class="border px-2 py-1">${similarity.toFixed(2)}</td><td class="border px-2 py-1">${tags}</td>${subCols}</tr>`;
+                                                const simCell = `<td class="border px-2 py-1${similarity >= 0.8 ? ' font-bold bg-yellow-100' : ''}">${similarity.toFixed(2)}</td>`;
+                                                return `<tr${highlightClass}><td class="border px-2 py-1">${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a></td>${simCell}<td class="border px-2 py-1">${tags}</td>${subCols}</tr>`;
                                             })
                                             .join("\n");
 
@@ -337,32 +338,32 @@ http.createServer((req, res) => {
                                             function addSubcategory(idx) {
                                                 var container = document.getElementById('subcategories' + idx);
                                                 var div = document.createElement('div');
-                                                div.className = 'mb-2 space-y-1';
+                                                div.className = 'mb-2 flex flex-wrap items-center space-x-2';
                                                 var title = document.createElement('input');
                                                 title.type = 'text';
                                                 title.name = 'subcategory' + idx + 'Title';
                                                 title.placeholder = 'Title';
-                                                title.className = 'border p-1 w-full';
+                                                title.className = 'border p-1 flex-1';
                                                 div.appendChild(title);
                                                 var desc = document.createElement('textarea');
                                                 desc.name = 'subcategory' + idx + 'Desc';
                                                 desc.placeholder = 'Description';
-                                                desc.className = 'border p-1 w-full';
+                                                desc.className = 'border p-1 flex-1';
                                                 div.appendChild(desc);
                                                 var kw = document.createElement('input');
                                                 kw.type = 'text';
                                                 kw.name = 'subcategory' + idx + 'Keywords';
                                                 kw.placeholder = 'Keywords';
-                                                kw.className = 'border p-1 w-full';
+                                                kw.className = 'border p-1 flex-1';
                                                 div.appendChild(kw);
                                                 var btn = document.createElement('button');
                                                 btn.type = 'button';
-                                                btn.textContent = 'Remove';
-                                                btn.className = 'bg-red-500 text-white px-2 py-1 rounded';
+                                                btn.innerHTML = '&#x2716;';
+                                                btn.className = 'text-red-500 font-bold px-2';
                                                 btn.onclick = function(){ div.remove(); };
                                                 div.appendChild(btn);
                                                 container.appendChild(div);
-                                            }
+                                           }
                                         </script>
                                     </head>
                                     <body class="font-sans p-5">

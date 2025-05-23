@@ -1,6 +1,7 @@
 const http = require("http");
 const https = require("https");
 const { parseString } = require("xml2js");
+const { URL } = require("url");
 
 function createEmbedding(text, callback) {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -42,11 +43,21 @@ function createEmbedding(text, callback) {
     req.end();
 }
 
+function cosineSimilarity(vec1, vec2) {
+    const dot = vec1.reduce((sum, v, i) => sum + v * vec2[i], 0);
+    const norm1 = Math.sqrt(vec1.reduce((sum, v) => sum + v * v, 0));
+    const norm2 = Math.sqrt(vec2.reduce((sum, v) => sum + v * v, 0));
+    if (!norm1 || !norm2) return 0;
+    return dot / (norm1 * norm2);
+}
+
 // RSS feed URL
 const rssUrl =
     "https://news.google.com/rss/search?q=Business%20News&hl=en-US&gl=US&ceid=US:en";
 
 http.createServer((req, res) => {
+    const urlObj = new URL(req.url, `http://${req.headers.host}`);
+    const categoryText = urlObj.searchParams.get("category") || "inflation";
     https
         .get(rssUrl, (rssRes) => {
             let data = "";
@@ -67,15 +78,32 @@ http.createServer((req, res) => {
                     const articleText = `${item.title[0]}\n\n${item.description ? item.description[0] : ""}`;
 
                     createEmbedding(articleText, (embedErr, embedResult) => {
-                        let embeddingSection = "";
-                        if (!embedErr && embedResult && embedResult.data && embedResult.data[0] && embedResult.data[0].embedding) {
-                            const snippet = JSON.stringify(embedResult.data[0].embedding.slice(0, 10), null, 2);
-                            embeddingSection = `<h2>Embedding (first 10 values)</h2><div class="json-block">${snippet}</div>`;
-                        } else if (embedErr) {
-                            embeddingSection = `<p>Error generating embedding: ${embedErr.message}</p>`;
+                        if (embedErr || !embedResult || !embedResult.data || !embedResult.data[0]) {
+                            res.writeHead(500, { "Content-Type": "text/plain" });
+                            res.end("Error generating article embedding: " + (embedErr ? embedErr.message : "No data"));
+                            return;
                         }
 
-                        const html = `
+                        const articleEmbedding = embedResult.data[0].embedding;
+                        createEmbedding(categoryText, (catErr, catResult) => {
+                            if (catErr || !catResult || !catResult.data || !catResult.data[0]) {
+                                res.writeHead(500, { "Content-Type": "text/plain" });
+                                res.end("Error generating category embedding: " + (catErr ? catErr.message : "No data"));
+                                return;
+                            }
+
+                            const categoryEmbedding = catResult.data[0].embedding;
+                            const similarity = cosineSimilarity(articleEmbedding, categoryEmbedding);
+                            const threshold = 0.75;
+
+                            if (similarity < threshold) {
+                                res.writeHead(200, { "Content-Type": "text/plain" });
+                                res.end(`Article does not match category \"${categoryText}\" (similarity ${similarity.toFixed(2)})`);
+                                return;
+                            }
+
+                            const snippet = JSON.stringify(articleEmbedding.slice(0, 10), null, 2);
+                            const html = `
                         <html>
                         <head>
                             <title>Business News - First Article</title>
@@ -88,7 +116,8 @@ http.createServer((req, res) => {
                             <h1>${item.title[0]}</h1>
                             <p><a href="${item.link[0]}" target="_blank">Read full article</a></p>
                             <p><strong>Published:</strong> ${item.pubDate[0]}</p>
-                            ${embeddingSection}
+                            <p><strong>Similarity to \"${categoryText}\"</strong>: ${similarity.toFixed(2)}</p>
+                            <h2>Embedding (first 10 values)</h2><div class="json-block">${snippet}</div>
                             <hr>
                             <h2>Raw JSON</h2>
                             <div class="json-block">${JSON.stringify(item, null, 2)}</div>
@@ -96,8 +125,9 @@ http.createServer((req, res) => {
                         </html>
                     `;
 
-                        res.writeHead(200, { "Content-Type": "text/html" });
-                        res.end(html);
+                            res.writeHead(200, { "Content-Type": "text/html" });
+                            res.end(html);
+                        });
                     });
                 });
             });

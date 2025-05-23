@@ -69,6 +69,15 @@ function createEmbeddingPromise(text) {
     });
 }
 
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 70%, 80%)`;
+}
+
 // RSS feed URL
 const rssUrl =
     "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147";
@@ -80,11 +89,13 @@ http.createServer((req, res) => {
         "Trade and tariff news",
         "Interest rate outlook",
     ];
-    const categoryTexts = [
-        urlObj.searchParams.get("category1") || defaultCategories[0],
-        urlObj.searchParams.get("category2") || defaultCategories[1],
-        urlObj.searchParams.get("category3") || defaultCategories[2],
-    ];
+
+    const categories = defaultCategories.map((def, i) => {
+        const idx = i + 1;
+        const name = urlObj.searchParams.get(`category${idx}`) || def;
+        const subcategories = urlObj.searchParams.getAll(`subcategory${idx}`);
+        return { name, subcategories };
+    });
 
     https
         .get(rssUrl, (rssRes) => {
@@ -104,47 +115,98 @@ http.createServer((req, res) => {
 
                     const items = result.rss.channel[0].item.slice(0, 10);
 
-                    Promise.all(categoryTexts.map(createEmbeddingPromise))
-                        .then((categoryEmbeddings) => {
-                            const promises = items.map((it) => {
-                                const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
-                                return createEmbeddingPromise(articleText).then(
-                                    (articleEmb) => {
-                                        const sims = categoryEmbeddings.map((ce) =>
-                                            cosineSimilarity(articleEmb, ce),
-                                        );
-                                        return { item: it, similarities: sims };
-                                    },
-                                );
+                    const embeddingTexts = [];
+                    categories.forEach((cat) => {
+                        embeddingTexts.push(cat.name);
+                        cat.subcategories.forEach((sub) => embeddingTexts.push(sub));
+                    });
+
+                    Promise.all(embeddingTexts.map(createEmbeddingPromise))
+                        .then((embeds) => {
+                            let pos = 0;
+                            categories.forEach((cat) => {
+                                cat.embedding = embeds[pos++];
+                                cat.subEmbeddings = cat.subcategories.map(() => embeds[pos++]);
                             });
 
-                            return Promise.all(promises).then((results) => {
-                                const categoryResults = categoryEmbeddings.map((_, idx) => {
+                            const articlePromises = items.map((it) => {
+                                const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
+                                return createEmbeddingPromise(articleText).then((articleEmb) => {
+                                    const sims = categories.map((cat) => {
+                                        return {
+                                            sim: cosineSimilarity(articleEmb, cat.embedding),
+                                            subSims: cat.subEmbeddings.map((subEmb) => cosineSimilarity(articleEmb, subEmb)),
+                                        };
+                                    });
+                                    return { item: it, sims };
+                                });
+                            });
+
+                            return Promise.all(articlePromises).then((results) => {
+                                const categoryResults = categories.map((cat, idx) => {
                                     return results
-                                        .map(({ item: it, similarities }) => ({
-                                            item: it,
-                                            similarity: similarities[idx],
+                                        .map(({ item, sims }) => ({
+                                            item,
+                                            similarity: sims[idx].sim,
+                                            subSimilarities: sims[idx].subSims,
                                         }))
                                         .sort((a, b) => b.similarity - a.similarity);
                                 });
 
+                                const formSections = categories
+                                    .map((cat, idx) => {
+                                        const subInputs = cat.subcategories
+                                            .map(
+                                                (sub) => `
+                                                    <div>
+                                                        <input type="text" name="subcategory${idx + 1}" value="${sub}" />
+                                                        <button type="button" onclick="this.parentNode.remove()">Remove</button>
+                                                    </div>`
+                                            )
+                                            .join("");
+                                        return `
+                                            <h3>Category ${idx + 1}</h3>
+                                            <input type="text" name="category${idx + 1}" value="${cat.name}" />
+                                            <div id="subcategories${idx + 1}">
+                                                ${subInputs}
+                                            </div>
+                                            <button type="button" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
+                                            <br/><br/>
+                                        `;
+                                    })
+                                    .join("");
+
+                                const formHtml = `
+                                    <form method="GET" style="margin-bottom:20px;">
+                                        ${formSections}
+                                        <button type="submit">Submit</button>
+                                    </form>
+                                `;
+
                                 const sections = categoryResults
                                     .map((catRes, idx) => {
+                                        const headerCols = `
+                                            <th>Article</th>
+                                            <th>Similarity</th>
+                                            ${categories[idx].subcategories
+                                                .map((sub) => `<th>${sub}</th>`)
+                                                .join("")}
+                                        `;
                                         const rows = catRes
-                                            .map(({ item: it, similarity }) => {
+                                            .map(({ item, similarity, subSimilarities }) => {
                                                 let img = "";
                                                 if (
-                                                    it["media:content"] &&
-                                                    it["media:content"][0].$ &&
-                                                    it["media:content"][0].$.url
+                                                    item["media:content"] &&
+                                                    item["media:content"][0].$ &&
+                                                    item["media:content"][0].$.url
                                                 ) {
-                                                    img = it["media:content"][0].$.url;
+                                                    img = item["media:content"][0].$.url;
                                                 } else if (
-                                                    it.enclosure &&
-                                                    it.enclosure[0] &&
-                                                    it.enclosure[0].$.url
+                                                    item.enclosure &&
+                                                    item.enclosure[0] &&
+                                                    item.enclosure[0].$.url
                                                 ) {
-                                                    img = it.enclosure[0].$.url;
+                                                    img = item.enclosure[0].$.url;
                                                 }
                                                 const imgTag = img
                                                     ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
@@ -152,32 +214,27 @@ http.createServer((req, res) => {
                                                 const highlight =
                                                     similarity > 0.8
                                                         ? ' style="background-color: #c8e6c9;"'
-                                                        : '';
-                                                return `<tr${highlight}><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td><td>${similarity.toFixed(2)}</td></tr>`;
+                                                        : "";
+                                                const tags = categories[idx].subcategories
+                                                    .map((sub, subIdx) =>
+                                                        subSimilarities[subIdx] >= 0.8
+                                                            ? `<span class="tag" style="background-color:${stringToColor(sub)};">${sub}</span>`
+                                                            : "",
+                                                    )
+                                                    .join(" ");
+
+                                                const subCols = subSimilarities
+                                                    .map((sim) => `<td>${sim.toFixed(2)}</td>`)
+                                                    .join("");
+                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${subCols}</tr>`;
                                             })
                                             .join("\n");
 
-                                        const hiddenInputs = categoryTexts
-                                            .map((txt, j) =>
-                                                j === idx
-                                                    ? ""
-                                                    : `<input type="hidden" name="category${j + 1}" value="${categoryTexts[j]}" />`
-                                            )
-                                            .join("");
-                                        const form = `
-                                            <form method="GET" style="margin-bottom:20px;">
-                                                Category ${idx + 1}: <input type="text" name="category${idx + 1}" value="${categoryTexts[idx]}" />
-                                                ${hiddenInputs}
-                                                <button type="submit">Submit</button>
-                                            </form>
-                                        `;
                                         return `
-                                            <h2>Category ${idx + 1}: ${categoryTexts[idx]}</h2>
-                                            ${form}
+                                            <h2>Category ${idx + 1}: ${categories[idx].name}</h2>
                                             <table>
                                                 <tr>
-                                                    <th>Article</th>
-                                                    <th>Similarity</th>
+                                                    ${headerCols}
                                                 </tr>
                                                 ${rows}
                                             </table>
@@ -190,13 +247,31 @@ http.createServer((req, res) => {
                                     <head>
                                         <title>Business News - Top Matches</title>
                                         <style>
-                                            body { font-family: Arial; padding: 20px; }
-                                            table { border-collapse: collapse; width: 100%; margin-bottom: 40px; }
-                                            th, td { border: 1px solid #ddd; padding: 8px; }
-                                            th { background-color: #f2f2f2; }
+                                            body { font-family: Arial; padding:20px; }
+                                          table { border-collapse: collapse; width: 100%; margin-bottom: 40px; }
+                                          th, td { border: 1px solid #ddd; padding: 8px; }
+                                          th { background-color: #f2f2f2; }
+                                          .tag { padding: 2px 4px; border-radius: 3px; font-size: 0.8em; margin-left: 4px; display: inline-block; color: #000; }
                                         </style>
+                                        <script>
+                                            function addSubcategory(idx) {
+                                                var container = document.getElementById('subcategories' + idx);
+                                                var div = document.createElement('div');
+                                                var input = document.createElement('input');
+                                                input.type = 'text';
+                                                input.name = 'subcategory' + idx;
+                                                div.appendChild(input);
+                                                var btn = document.createElement('button');
+                                                btn.type = 'button';
+                                                btn.textContent = 'Remove';
+                                                btn.onclick = function(){ div.remove(); };
+                                                div.appendChild(btn);
+                                                container.appendChild(div);
+                                            }
+                                        </script>
                                     </head>
                                     <body>
+                                        ${formHtml}
                                         ${sections}
                                     </body>
                                     </html>

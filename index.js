@@ -234,47 +234,48 @@ http.createServer((req, res) => {
                                         const subInputs = cat.subcategories
                                             .map(
                                                 (sub) => `
-                                                    <div>
-                                                        <input type="text" name="subcategory${idx + 1}Title" value="${sub.title}" placeholder="Title" />
-                                                        <textarea name="subcategory${idx + 1}Desc" placeholder="Description">${sub.description}</textarea>
-                                                        <input type="text" name="subcategory${idx + 1}Keywords" value="${sub.keywords.join(", ")}" placeholder="Keywords" />
-                                                        <button type="button" onclick="this.parentNode.remove()">Remove</button>
+                                                    <div class="mb-2 space-y-1">
+                                                        <input class="border p-1 w-full" type="text" name="subcategory${idx + 1}Title" value="${sub.title}" placeholder="Title" />
+                                                        <textarea class="border p-1 w-full" name="subcategory${idx + 1}Desc" placeholder="Description">${sub.description}</textarea>
+                                                        <input class="border p-1 w-full" type="text" name="subcategory${idx + 1}Keywords" value="${sub.keywords.join(", ")}" placeholder="Keywords" />
+                                                        <button type="button" class="bg-red-500 text-white px-2 py-1 rounded" onclick="this.parentNode.remove()">Remove</button>
                                                     </div>`
                                             )
                                             .join("");
                                         return `
-                                            <h3>Category ${idx + 1}</h3>
-                                            <input type="text" name="category${idx + 1}" value="${cat.name}" />
+                                            <h3 class="text-lg font-semibold">Category ${idx + 1}</h3>
+                                            <input class="border p-1 w-full mb-2" type="text" name="category${idx + 1}" value="${cat.name}" />
                                             <div id="subcategories${idx + 1}">
                                                 ${subInputs}
                                             </div>
-                                            <button type="button" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
-                                            <br/>
-                                            <label>Category Keywords:</label>
-                                            <input type="text" name="catKeywords${idx + 1}" value="${cat.keywords.join(", ")}" />
-                                            <br/>
-                                            <label>All Keywords:</label>
-                                            <input type="text" value="${cat.allKeywords.join(", ")}" readonly />
-                                            <br/><br/>
+                                            <button type="button" class="bg-blue-500 text-white px-2 py-1 rounded mb-2" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
+                                            <div class="mb-2">
+                                                <label class="block">Category Keywords:</label>
+                                                <input class="border p-1 w-full" type="text" name="catKeywords${idx + 1}" value="${cat.keywords.join(", ")}" />
+                                            </div>
+                                            <div class="mb-4">
+                                                <label class="block">All Keywords:</label>
+                                                <input class="border p-1 w-full" type="text" value="${cat.allKeywords.join(", ")}" readonly />
+                                            </div>
                                         `;
                                     })
                                     .join("");
 
                                 const formHtml = `
-                                    <form method="GET" style="margin-bottom:20px;">
+                                    <form method="GET" class="mb-6 space-y-4">
                                         ${formSections}
-                                        <button type="submit">Submit</button>
+                                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Submit</button>
                                     </form>
                                 `;
 
                                 const sections = categoryResults
                                     .map((catRes, idx) => {
                                         const headerCols = `
-                                            <th>Article</th>
-                                            <th>Similarity</th>
-                                            <th>Keywords</th>
+                                            <th class="border px-2 py-1 bg-gray-100">Article</th>
+                                            <th class="border px-2 py-1 bg-gray-100">Similarity</th>
+                                            <th class="border px-2 py-1 bg-gray-100">Keywords</th>
                                             ${categories[idx].subcategories
-                                                .map((sub) => `<th>${sub.title}</th>`)
+                                                .map((sub) => `<th class="border px-2 py-1 bg-gray-100">${sub.title}</th>`)
                                                 .join("")}
                                         `;
                                         const rows = catRes
@@ -294,12 +295,10 @@ http.createServer((req, res) => {
                                                     img = item.enclosure[0].$.url;
                                                 }
                                                 const imgTag = img
-                                                    ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
+                                                    ? `<img src="${img}" alt="" class="max-w-[100px] inline-block align-middle"/>`
                                                     : "";
-                                                const highlight =
-                                                    composite > 0.8
-                                                        ? ' style="background-color: #c8e6c9;"'
-                                                        : "";
+                                                const highlightClass =
+                                                    composite > 0.8 ? ' class="bg-green-100"' : '';
                                                 const tags = keywords
                                                     .map(
                                                         (kw) =>
@@ -308,15 +307,15 @@ http.createServer((req, res) => {
                                                     .join(" ");
 
                                                 const subCols = subSimilarities
-                                                    .map((sim) => `<td>${sim.toFixed(2)}</td>`)
+                                                    .map((sim) => `<td class="border px-2 py-1">${sim.toFixed(2)}</td>`)
                                                     .join("");
-                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a></td><td>${similarity.toFixed(2)}</td><td>${tags}</td>${subCols}</tr>`;
+                                                return `<tr${highlightClass}><td class="border px-2 py-1">${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a></td><td class="border px-2 py-1">${similarity.toFixed(2)}</td><td class="border px-2 py-1">${tags}</td>${subCols}</tr>`;
                                             })
                                             .join("\n");
 
                                         return `
-                                            <h2>Category ${idx + 1}: ${categories[idx].name}</h2>
-                                            <table>
+                                            <h2 class="text-xl font-semibold mb-2">Category ${idx + 1}: ${categories[idx].name}</h2>
+                                            <table class="min-w-full border-collapse mb-10">
                                                 <tr>
                                                     ${headerCols}
                                                 </tr>
@@ -331,40 +330,42 @@ http.createServer((req, res) => {
                                     <head>
                                         <title>Business News - Top Matches</title>
                                         <style>
-                                            body { font-family: Arial; padding:20px; }
-                                          table { border-collapse: collapse; width: 100%; margin-bottom: 40px; }
-                                          th, td { border: 1px solid #ddd; padding: 8px; }
-                                          th { background-color: #f2f2f2; }
-                                          .tag { padding: 2px 4px; border-radius: 3px; font-size: 0.8em; margin-left: 4px; display: inline-block; color: #000; }
+                                            .tag { padding: 2px 4px; border-radius: 3px; font-size: 0.8em; margin-left: 4px; display: inline-block; color: #000; }
                                         </style>
+                                        <script src="https://cdn.tailwindcss.com"></script>
                                         <script>
                                             function addSubcategory(idx) {
                                                 var container = document.getElementById('subcategories' + idx);
                                                 var div = document.createElement('div');
+                                                div.className = 'mb-2 space-y-1';
                                                 var title = document.createElement('input');
                                                 title.type = 'text';
                                                 title.name = 'subcategory' + idx + 'Title';
                                                 title.placeholder = 'Title';
+                                                title.className = 'border p-1 w-full';
                                                 div.appendChild(title);
                                                 var desc = document.createElement('textarea');
                                                 desc.name = 'subcategory' + idx + 'Desc';
                                                 desc.placeholder = 'Description';
+                                                desc.className = 'border p-1 w-full';
                                                 div.appendChild(desc);
                                                 var kw = document.createElement('input');
                                                 kw.type = 'text';
                                                 kw.name = 'subcategory' + idx + 'Keywords';
                                                 kw.placeholder = 'Keywords';
+                                                kw.className = 'border p-1 w-full';
                                                 div.appendChild(kw);
                                                 var btn = document.createElement('button');
                                                 btn.type = 'button';
                                                 btn.textContent = 'Remove';
+                                                btn.className = 'bg-red-500 text-white px-2 py-1 rounded';
                                                 btn.onclick = function(){ div.remove(); };
                                                 div.appendChild(btn);
                                                 container.appendChild(div);
                                             }
                                         </script>
                                     </head>
-                                    <body>
+                                    <body class="font-sans p-5">
                                         ${formHtml}
                                         ${sections}
                                     </body>

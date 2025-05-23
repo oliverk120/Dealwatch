@@ -89,12 +89,19 @@ http.createServer((req, res) => {
         "Trade and tariff news",
         "Interest rate outlook",
     ];
+    const defaultKeywords = [
+        ["apple", "trump"],
+        [],
+        [],
+    ];
 
     const categories = defaultCategories.map((def, i) => {
         const idx = i + 1;
         const name = urlObj.searchParams.get(`category${idx}`) || def;
         const subcategories = urlObj.searchParams.getAll(`subcategory${idx}`);
-        return { name, subcategories };
+        const keywordsRaw = urlObj.searchParams.getAll(`keyword${idx}`);
+        const keywords = keywordsRaw.length ? keywordsRaw : defaultKeywords[i];
+        return { name, subcategories, keywords };
     });
 
     https
@@ -119,6 +126,7 @@ http.createServer((req, res) => {
                     categories.forEach((cat) => {
                         embeddingTexts.push(cat.name);
                         cat.subcategories.forEach((sub) => embeddingTexts.push(sub));
+                        cat.keywords.forEach((kw) => embeddingTexts.push(kw));
                     });
 
                     Promise.all(embeddingTexts.map(createEmbeddingPromise))
@@ -127,6 +135,7 @@ http.createServer((req, res) => {
                             categories.forEach((cat) => {
                                 cat.embedding = embeds[pos++];
                                 cat.subEmbeddings = cat.subcategories.map(() => embeds[pos++]);
+                                cat.keywordEmbeddings = cat.keywords.map(() => embeds[pos++]);
                             });
 
                             const articlePromises = items.map((it) => {
@@ -136,6 +145,7 @@ http.createServer((req, res) => {
                                         return {
                                             sim: cosineSimilarity(articleEmb, cat.embedding),
                                             subSims: cat.subEmbeddings.map((subEmb) => cosineSimilarity(articleEmb, subEmb)),
+                                            keywordSims: cat.keywordEmbeddings.map((kEmb) => cosineSimilarity(articleEmb, kEmb)),
                                         };
                                     });
                                     return { item: it, sims };
@@ -145,12 +155,20 @@ http.createServer((req, res) => {
                             return Promise.all(articlePromises).then((results) => {
                                 const categoryResults = categories.map((cat, idx) => {
                                     return results
-                                        .map(({ item, sims }) => ({
-                                            item,
-                                            similarity: sims[idx].sim,
-                                            subSimilarities: sims[idx].subSims,
-                                        }))
-                                        .sort((a, b) => b.similarity - a.similarity);
+                                        .map(({ item, sims }) => {
+                                            const similarity = sims[idx].sim;
+                                            const subSimilarities = sims[idx].subSims;
+                                            const keywordSimilarities = sims[idx].keywordSims;
+                                            const composite = Math.max(similarity, ...subSimilarities);
+                                            return {
+                                                item,
+                                                similarity,
+                                                subSimilarities,
+                                                keywordSimilarities,
+                                                composite,
+                                            };
+                                        })
+                                        .sort((a, b) => b.composite - a.composite);
                                 });
 
                                 const formSections = categories
@@ -164,6 +182,15 @@ http.createServer((req, res) => {
                                                     </div>`
                                             )
                                             .join("");
+                                        const keywordInputs = cat.keywords
+                                            .map(
+                                                (kw) => `
+                                                    <div>
+                                                        <input type="text" name="keyword${idx + 1}" value="${kw}" />
+                                                        <button type="button" onclick="this.parentNode.remove()">Remove</button>
+                                                    </div>`
+                                            )
+                                            .join("");
                                         return `
                                             <h3>Category ${idx + 1}</h3>
                                             <input type="text" name="category${idx + 1}" value="${cat.name}" />
@@ -171,6 +198,10 @@ http.createServer((req, res) => {
                                                 ${subInputs}
                                             </div>
                                             <button type="button" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
+                                            <div id="keywords${idx + 1}">
+                                                ${keywordInputs}
+                                            </div>
+                                            <button type="button" onclick="addKeyword(${idx + 1})">Add Keyword</button>
                                             <br/><br/>
                                         `;
                                     })
@@ -193,7 +224,7 @@ http.createServer((req, res) => {
                                                 .join("")}
                                         `;
                                         const rows = catRes
-                                            .map(({ item, similarity, subSimilarities }) => {
+                                            .map(({ item, similarity, subSimilarities, keywordSimilarities, composite }) => {
                                                 let img = "";
                                                 if (
                                                     item["media:content"] &&
@@ -212,13 +243,13 @@ http.createServer((req, res) => {
                                                     ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
                                                     : "";
                                                 const highlight =
-                                                    similarity > 0.8
+                                                    composite > 0.8
                                                         ? ' style="background-color: #c8e6c9;"'
                                                         : "";
-                                                const tags = categories[idx].subcategories
-                                                    .map((sub, subIdx) =>
-                                                        subSimilarities[subIdx] >= 0.8
-                                                            ? `<span class="tag" style="background-color:${stringToColor(sub)};">${sub}</span>`
+                                                const tags = categories[idx].keywords
+                                                    .map((kw, kwIdx) =>
+                                                        keywordSimilarities[kwIdx] >= 0.8
+                                                            ? `<span class="tag" style="background-color:${stringToColor(kw)};">${kw}</span>`
                                                             : "",
                                                     )
                                                     .join(" ");
@@ -260,6 +291,20 @@ http.createServer((req, res) => {
                                                 var input = document.createElement('input');
                                                 input.type = 'text';
                                                 input.name = 'subcategory' + idx;
+                                                div.appendChild(input);
+                                                var btn = document.createElement('button');
+                                                btn.type = 'button';
+                                                btn.textContent = 'Remove';
+                                                btn.onclick = function(){ div.remove(); };
+                                                div.appendChild(btn);
+                                                container.appendChild(div);
+                                            }
+                                            function addKeyword(idx) {
+                                                var container = document.getElementById('keywords' + idx);
+                                                var div = document.createElement('div');
+                                                var input = document.createElement('input');
+                                                input.type = 'text';
+                                                input.name = 'keyword' + idx;
                                                 div.appendChild(input);
                                                 var btn = document.createElement('button');
                                                 btn.type = 'button';

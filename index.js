@@ -16,7 +16,7 @@ function createEmbedding(text, callback) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
         },
     };
 
@@ -36,10 +36,12 @@ function createEmbedding(text, callback) {
     });
     req.on("error", (err) => callback(err));
 
-    req.write(JSON.stringify({
-        input: text,
-        model: "text-embedding-ada-002",
-    }));
+    req.write(
+        JSON.stringify({
+            input: text,
+            model: "text-embedding-ada-002",
+        }),
+    );
     req.end();
 }
 
@@ -69,11 +71,13 @@ function createEmbeddingPromise(text) {
 
 // RSS feed URL
 const rssUrl =
-    "https://news.google.com/rss/search?q=Business%20News&hl=en-US&gl=US&ceid=US:en";
+    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147";
 
 http.createServer((req, res) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
-    const categoryText = urlObj.searchParams.get("category") || "inflation";
+    const categoryText =
+        urlObj.searchParams.get("category") ||
+        "Articles economic inflation or the impact of tariffs on the economy";
     https
         .get(rssUrl, (rssRes) => {
             let data = "";
@@ -96,24 +100,41 @@ http.createServer((req, res) => {
                         .then((categoryEmbedding) => {
                             const promises = items.map((it) => {
                                 const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
-                                return createEmbeddingPromise(articleText).then((articleEmb) => {
-                                    const similarity = cosineSimilarity(articleEmb, categoryEmbedding);
-                                    return { item: it, similarity };
-                                });
+                                return createEmbeddingPromise(articleText).then(
+                                    (articleEmb) => {
+                                        const similarity = cosineSimilarity(
+                                            articleEmb,
+                                            categoryEmbedding,
+                                        );
+                                        return { item: it, similarity };
+                                    },
+                                );
                             });
 
                             return Promise.all(promises).then((results) => {
-                                results.sort((a, b) => b.similarity - a.similarity);
+                                results.sort(
+                                    (a, b) => b.similarity - a.similarity,
+                                );
 
                                 const rows = results
                                     .map(({ item: it, similarity }) => {
                                         let img = "";
-                                        if (it["media:content"] && it["media:content"][0].$ && it["media:content"][0].$.url) {
+                                        if (
+                                            it["media:content"] &&
+                                            it["media:content"][0].$ &&
+                                            it["media:content"][0].$.url
+                                        ) {
                                             img = it["media:content"][0].$.url;
-                                        } else if (it.enclosure && it.enclosure[0] && it.enclosure[0].$.url) {
+                                        } else if (
+                                            it.enclosure &&
+                                            it.enclosure[0] &&
+                                            it.enclosure[0].$.url
+                                        ) {
                                             img = it.enclosure[0].$.url;
                                         }
-                                        const imgTag = img ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>` : "";
+                                        const imgTag = img
+                                            ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
+                                            : "";
                                         return `<tr><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td><td>${similarity.toFixed(2)}</td></tr>`;
                                     })
                                     .join("\n");
@@ -139,13 +160,19 @@ http.createServer((req, res) => {
                                     </html>
                                 `;
 
-                                res.writeHead(200, { "Content-Type": "text/html" });
+                                res.writeHead(200, {
+                                    "Content-Type": "text/html",
+                                });
                                 res.end(html);
                             });
                         })
                         .catch((error) => {
-                            res.writeHead(500, { "Content-Type": "text/plain" });
-                            res.end("Error processing articles: " + error.message);
+                            res.writeHead(500, {
+                                "Content-Type": "text/plain",
+                            });
+                            res.end(
+                                "Error processing articles: " + error.message,
+                            );
                         });
                 });
             });

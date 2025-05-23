@@ -90,34 +90,69 @@ http.createServer((req, res) => {
         "Interest rate outlook",
     ];
     const defaultSubcategories = [
-        ["Nike", "American Airlines", "UnitedHealthcare"],
-        [],
-        [],
+        [
+            { title: "Nike", description: "Sports apparel company", keywords: ["sneakers", "apparel"] },
+            { title: "American Airlines", description: "Major US airline", keywords: ["airline", "travel"] },
+            { title: "UnitedHealthcare", description: "Health insurer", keywords: ["insurance", "health"] },
+        ],
+        [
+            { title: "Steel Tariffs", description: "US steel and aluminum tariffs", keywords: ["steel", "tariff"] },
+        ],
+        [
+            { title: "Federal Reserve", description: "Fed interest rate policy", keywords: ["fed", "rates"] },
+        ],
     ];
     const defaultKeywords = [
-        ["apple", "trump"],
-        [],
-        [],
+        ["inflation"],
+        ["trade"],
+        ["interest"],
     ];
 
     const categories = defaultCategories.map((def, i) => {
         const idx = i + 1;
         const name = urlObj.searchParams.get(`category${idx}`) || def;
-        let subcategories = urlObj.searchParams.getAll(`subcategory${idx}`);
-        if (subcategories.length === 0) {
+
+        const titles = urlObj.searchParams.getAll(`subcategory${idx}Title`);
+        const descs = urlObj.searchParams.getAll(`subcategory${idx}Desc`);
+        const kwParams = urlObj.searchParams.getAll(`subcategory${idx}Keywords`);
+
+        let subcategories = [];
+        if (titles.length === 0) {
             subcategories = defaultSubcategories[i] || [];
+        } else {
+            for (let j = 0; j < titles.length; j++) {
+                const kw = kwParams[j]
+                    ? kwParams[j]
+                          .split(',')
+                          .map((k) => k.trim())
+                          .filter((k) => k)
+                    : [];
+                subcategories.push({
+                    title: titles[j],
+                    description: descs[j] || '',
+                    keywords: kw,
+                });
+            }
         }
-        let keywordsParam = urlObj.searchParams.get(`keywords${idx}`);
+
+        let keywordsParam = urlObj.searchParams.get(`catKeywords${idx}`);
         if (!keywordsParam && defaultKeywords[i]) {
-            keywordsParam = defaultKeywords[i].join(",");
+            keywordsParam = defaultKeywords[i].join(',');
         }
         const keywords = keywordsParam
             ? keywordsParam
-                  .split(",")
+                  .split(',')
                   .map((k) => k.trim())
                   .filter((k) => k)
             : [];
-        return { name, subcategories, keywords };
+
+        let allKeywords = [...keywords];
+        subcategories.forEach((sub) => {
+            allKeywords = allKeywords.concat(sub.keywords);
+        });
+        allKeywords = Array.from(new Set(allKeywords));
+
+        return { name, subcategories, keywords, allKeywords };
     });
 
     https
@@ -141,7 +176,9 @@ http.createServer((req, res) => {
                     const embeddingTexts = [];
                     categories.forEach((cat) => {
                         embeddingTexts.push(cat.name);
-                        cat.subcategories.forEach((sub) => embeddingTexts.push(sub));
+                        cat.subcategories.forEach((sub) =>
+                            embeddingTexts.push(`${sub.title}\n\n${sub.description}`),
+                        );
                     });
 
                     Promise.all(embeddingTexts.map(createEmbeddingPromise))
@@ -156,7 +193,9 @@ http.createServer((req, res) => {
                                 const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
                                 const lowerText = articleText.toLowerCase();
                                 const keywordMatches = categories.map((cat) =>
-                                    cat.keywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
+                                    cat.allKeywords.filter((kw) =>
+                                        lowerText.includes(kw.toLowerCase()),
+                                    ),
                                 );
                                 return createEmbeddingPromise(articleText).then((articleEmb) => {
                                     const sims = categories.map((cat) => {
@@ -196,7 +235,9 @@ http.createServer((req, res) => {
                                             .map(
                                                 (sub) => `
                                                     <div>
-                                                        <input type="text" name="subcategory${idx + 1}" value="${sub}" />
+                                                        <input type="text" name="subcategory${idx + 1}Title" value="${sub.title}" placeholder="Title" />
+                                                        <textarea name="subcategory${idx + 1}Desc" placeholder="Description">${sub.description}</textarea>
+                                                        <input type="text" name="subcategory${idx + 1}Keywords" value="${sub.keywords.join(", ")}" placeholder="Keywords" />
                                                         <button type="button" onclick="this.parentNode.remove()">Remove</button>
                                                     </div>`
                                             )
@@ -209,8 +250,11 @@ http.createServer((req, res) => {
                                             </div>
                                             <button type="button" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
                                             <br/>
-                                            <label>Keywords (comma separated):</label>
-                                            <input type="text" name="keywords${idx + 1}" value="${cat.keywords.join(", ")}" />
+                                            <label>Category Keywords:</label>
+                                            <input type="text" name="catKeywords${idx + 1}" value="${cat.keywords.join(", ")}" />
+                                            <br/>
+                                            <label>All Keywords:</label>
+                                            <input type="text" value="${cat.allKeywords.join(", ")}" readonly />
                                             <br/><br/>
                                         `;
                                     })
@@ -228,8 +272,9 @@ http.createServer((req, res) => {
                                         const headerCols = `
                                             <th>Article</th>
                                             <th>Similarity</th>
+                                            <th>Keywords</th>
                                             ${categories[idx].subcategories
-                                                .map((sub) => `<th>${sub}</th>`)
+                                                .map((sub) => `<th>${sub.title}</th>`)
                                                 .join("")}
                                         `;
                                         const rows = catRes
@@ -265,7 +310,7 @@ http.createServer((req, res) => {
                                                 const subCols = subSimilarities
                                                     .map((sim) => `<td>${sim.toFixed(2)}</td>`)
                                                     .join("");
-                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${subCols}</tr>`;
+                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a></td><td>${similarity.toFixed(2)}</td><td>${tags}</td>${subCols}</tr>`;
                                             })
                                             .join("\n");
 
@@ -296,10 +341,20 @@ http.createServer((req, res) => {
                                             function addSubcategory(idx) {
                                                 var container = document.getElementById('subcategories' + idx);
                                                 var div = document.createElement('div');
-                                                var input = document.createElement('input');
-                                                input.type = 'text';
-                                                input.name = 'subcategory' + idx;
-                                                div.appendChild(input);
+                                                var title = document.createElement('input');
+                                                title.type = 'text';
+                                                title.name = 'subcategory' + idx + 'Title';
+                                                title.placeholder = 'Title';
+                                                div.appendChild(title);
+                                                var desc = document.createElement('textarea');
+                                                desc.name = 'subcategory' + idx + 'Desc';
+                                                desc.placeholder = 'Description';
+                                                div.appendChild(desc);
+                                                var kw = document.createElement('input');
+                                                kw.type = 'text';
+                                                kw.name = 'subcategory' + idx + 'Keywords';
+                                                kw.placeholder = 'Keywords';
+                                                div.appendChild(kw);
                                                 var btn = document.createElement('button');
                                                 btn.type = 'button';
                                                 btn.textContent = 'Remove';

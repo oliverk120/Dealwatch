@@ -79,20 +79,19 @@ function stringToColor(str) {
 }
 
 // RSS feed URL
-const rssUrl =
-    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147";
+const rssUrl = "https://moxie.foxbusiness.com/google-publisher/economy.xml";
 
 http.createServer((req, res) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
     const defaultCategories = [
-        "Articles economic inflation or the impact of tariffs on the economy",
-        "Trade and tariff news",
-        "Interest rate outlook",
+        "Articles about mergers or acquisitions in north america",
+        "Trade and tariff related news",
+        "News about automotive manufacturing facilities and industrial automation in north america",
     ];
     const defaultSubcategories = [
-        ["Nike", "American Airlines", "UnitedHealthcare"],
-        [],
-        [],
+        ["private equity", "EV/EBITDA multiples"],
+        ["Apple maker of iphones", "US President Donald Trump"],
+        ["stellantis", "Ford", "General Motors"],
     ];
 
     const categories = defaultCategories.map((def, i) => {
@@ -133,7 +132,9 @@ http.createServer((req, res) => {
                     const embeddingTexts = [];
                     categories.forEach((cat) => {
                         embeddingTexts.push(cat.name);
-                        cat.subcategories.forEach((sub) => embeddingTexts.push(sub));
+                        cat.subcategories.forEach((sub) =>
+                            embeddingTexts.push(sub),
+                        );
                     });
 
                     Promise.all(embeddingTexts.map(createEmbeddingPromise))
@@ -141,50 +142,85 @@ http.createServer((req, res) => {
                             let pos = 0;
                             categories.forEach((cat) => {
                                 cat.embedding = embeds[pos++];
-                                cat.subEmbeddings = cat.subcategories.map(() => embeds[pos++]);
+                                cat.subEmbeddings = cat.subcategories.map(
+                                    () => embeds[pos++],
+                                );
                             });
 
                             const articlePromises = items.map((it) => {
                                 const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
                                 const lowerText = articleText.toLowerCase();
                                 const keywordMatches = categories.map((cat) =>
-                                    cat.keywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
+                                    cat.keywords.filter((kw) =>
+                                        lowerText.includes(kw.toLowerCase()),
+                                    ),
                                 );
-                                return createEmbeddingPromise(articleText).then((articleEmb) => {
-                                    const sims = categories.map((cat) => {
+                                return createEmbeddingPromise(articleText).then(
+                                    (articleEmb) => {
+                                        const sims = categories.map((cat) => {
+                                            return {
+                                                sim: cosineSimilarity(
+                                                    articleEmb,
+                                                    cat.embedding,
+                                                ),
+                                                subSims: cat.subEmbeddings.map(
+                                                    (subEmb) =>
+                                                        cosineSimilarity(
+                                                            articleEmb,
+                                                            subEmb,
+                                                        ),
+                                                ),
+                                            };
+                                        });
                                         return {
-                                            sim: cosineSimilarity(articleEmb, cat.embedding),
-                                            subSims: cat.subEmbeddings.map((subEmb) => cosineSimilarity(articleEmb, subEmb)),
+                                            item: it,
+                                            sims,
+                                            keywordMatches,
                                         };
-                                    });
-                                    return { item: it, sims, keywordMatches };
-                                });
+                                    },
+                                );
                             });
 
-                            return Promise.all(articlePromises).then((results) => {
-                                const categoryResults = categories.map((cat, idx) => {
-                                    return results
-                                        .map(({ item, sims, keywordMatches }) => ({
-                                            item,
-                                            similarity: sims[idx].sim,
-                                            subSimilarities: sims[idx].subSims,
-                                            keywords: keywordMatches[idx],
-                                        }))
-                                        .sort((a, b) => b.similarity - a.similarity);
-                                });
+                            return Promise.all(articlePromises).then(
+                                (results) => {
+                                    const categoryResults = categories.map(
+                                        (cat, idx) => {
+                                            return results
+                                                .map(
+                                                    ({
+                                                        item,
+                                                        sims,
+                                                        keywordMatches,
+                                                    }) => ({
+                                                        item,
+                                                        similarity:
+                                                            sims[idx].sim,
+                                                        subSimilarities:
+                                                            sims[idx].subSims,
+                                                        keywords:
+                                                            keywordMatches[idx],
+                                                    }),
+                                                )
+                                                .sort(
+                                                    (a, b) =>
+                                                        b.similarity -
+                                                        a.similarity,
+                                                );
+                                        },
+                                    );
 
-                                const formSections = categories
-                                    .map((cat, idx) => {
-                                        const subInputs = cat.subcategories
-                                            .map(
-                                                (sub) => `
+                                    const formSections = categories
+                                        .map((cat, idx) => {
+                                            const subInputs = cat.subcategories
+                                                .map(
+                                                    (sub) => `
                                                     <div>
                                                         <input type="text" name="subcategory${idx + 1}" value="${sub}" />
                                                         <button type="button" onclick="this.parentNode.remove()">Remove</button>
-                                                    </div>`
-                                            )
-                                            .join("");
-                                        return `
+                                                    </div>`,
+                                                )
+                                                .join("");
+                                            return `
                                             <h3>Category ${idx + 1}</h3>
                                             <input type="text" name="category${idx + 1}" value="${cat.name}" />
                                             <div id="subcategories${idx + 1}">
@@ -196,19 +232,19 @@ http.createServer((req, res) => {
                                             <input type="text" name="keywords${idx + 1}" value="${cat.keywords.join(", ")}" />
                                             <br/><br/>
                                         `;
-                                    })
-                                    .join("");
+                                        })
+                                        .join("");
 
-                                const formHtml = `
+                                    const formHtml = `
                                     <form method="GET" style="margin-bottom:20px;">
                                         ${formSections}
                                         <button type="submit">Submit</button>
                                     </form>
                                 `;
 
-                                const sections = categoryResults
-                                    .map((catRes, idx) => {
-                                        const headerCols = `
+                                    const sections = categoryResults
+                                        .map((catRes, idx) => {
+                                            const headerCols = `
                                             <th>Article</th>
                                             <th>Similarity</th>
                                             <th>Keywords</th>
@@ -216,46 +252,78 @@ http.createServer((req, res) => {
                                                 .map((sub) => `<th>${sub}</th>`)
                                                 .join("")}
                                         `;
-                                        const rows = catRes
-                                            .map(({ item, similarity, subSimilarities, keywords }) => {
-                                                let img = "";
-                                                if (
-                                                    item["media:content"] &&
-                                                    item["media:content"][0].$ &&
-                                                    item["media:content"][0].$.url
-                                                ) {
-                                                    img = item["media:content"][0].$.url;
-                                                } else if (
-                                                    item.enclosure &&
-                                                    item.enclosure[0] &&
-                                                    item.enclosure[0].$.url
-                                                ) {
-                                                    img = item.enclosure[0].$.url;
-                                                }
-                                                const imgTag = img
-                                                    ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
-                                                    : "";
-                                                const highlight =
-                                                    similarity > 0.8
-                                                        ? ' style="background-color: #c8e6c9;"'
-                                                        : "";
-                                                const tags = categories[idx].subcategories
-                                                    .map((sub, subIdx) =>
-                                                        subSimilarities[subIdx] >= 0.8
-                                                            ? `<span class="tag" style="background-color:${stringToColor(sub)};">${sub}</span>`
-                                                            : "",
-                                                    )
-                                                    .join(" ");
+                                            const rows = catRes
+                                                .map(
+                                                    ({
+                                                        item,
+                                                        similarity,
+                                                        subSimilarities,
+                                                        keywords,
+                                                    }) => {
+                                                        let img = "";
+                                                        if (
+                                                            item[
+                                                                "media:content"
+                                                            ] &&
+                                                            item[
+                                                                "media:content"
+                                                            ][0].$ &&
+                                                            item[
+                                                                "media:content"
+                                                            ][0].$.url
+                                                        ) {
+                                                            img =
+                                                                item[
+                                                                    "media:content"
+                                                                ][0].$.url;
+                                                        } else if (
+                                                            item.enclosure &&
+                                                            item.enclosure[0] &&
+                                                            item.enclosure[0].$
+                                                                .url
+                                                        ) {
+                                                            img =
+                                                                item
+                                                                    .enclosure[0]
+                                                                    .$.url;
+                                                        }
+                                                        const imgTag = img
+                                                            ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
+                                                            : "";
+                                                        const highlight =
+                                                            similarity > 0.8
+                                                                ? ' style="background-color: #c8e6c9;"'
+                                                                : "";
+                                                        const tags = categories[
+                                                            idx
+                                                        ].subcategories
+                                                            .map(
+                                                                (
+                                                                    sub,
+                                                                    subIdx,
+                                                                ) =>
+                                                                    subSimilarities[
+                                                                        subIdx
+                                                                    ] >= 0.8
+                                                                        ? `<span class="tag" style="background-color:${stringToColor(sub)};">${sub}</span>`
+                                                                        : "",
+                                                            )
+                                                            .join(" ");
 
-                                                const subCols = subSimilarities
-                                                    .map((sim) => `<td>${sim.toFixed(2)}</td>`)
-                                                    .join("");
-                                                const keywordCol = `<td>${keywords.join(", ")}</td>`;
-                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${keywordCol}${subCols}</tr>`;
-                                            })
-                                            .join("\n");
+                                                        const subCols =
+                                                            subSimilarities
+                                                                .map(
+                                                                    (sim) =>
+                                                                        `<td>${sim.toFixed(2)}</td>`,
+                                                                )
+                                                                .join("");
+                                                        const keywordCol = `<td>${keywords.join(", ")}</td>`;
+                                                        return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${keywordCol}${subCols}</tr>`;
+                                                    },
+                                                )
+                                                .join("\n");
 
-                                        return `
+                                            return `
                                             <h2>Category ${idx + 1}: ${categories[idx].name}</h2>
                                             <table>
                                                 <tr>
@@ -264,10 +332,10 @@ http.createServer((req, res) => {
                                                 ${rows}
                                             </table>
                                         `;
-                                    })
-                                    .join("<br/>");
+                                        })
+                                        .join("<br/>");
 
-                                const html = `
+                                    const html = `
                                     <html>
                                     <head>
                                         <title>Business News - Top Matches</title>
@@ -302,11 +370,12 @@ http.createServer((req, res) => {
                                     </html>
                                 `;
 
-                                res.writeHead(200, {
-                                    "Content-Type": "text/html",
-                                });
-                                res.end(html);
-                            });
+                                    res.writeHead(200, {
+                                        "Content-Type": "text/html",
+                                    });
+                                    res.end(html);
+                                },
+                            );
                         })
                         .catch((error) => {
                             res.writeHead(500, {

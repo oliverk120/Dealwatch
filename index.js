@@ -94,6 +94,11 @@ http.createServer((req, res) => {
         [],
         [],
     ];
+    const defaultKeywords = [
+        ["apple", "trump"],
+        [],
+        [],
+    ];
 
     const categories = defaultCategories.map((def, i) => {
         const idx = i + 1;
@@ -102,7 +107,10 @@ http.createServer((req, res) => {
         if (subcategories.length === 0) {
             subcategories = defaultSubcategories[i] || [];
         }
-        const keywordsParam = urlObj.searchParams.get(`keywords${idx}`);
+        let keywordsParam = urlObj.searchParams.get(`keywords${idx}`);
+        if (!keywordsParam && defaultKeywords[i]) {
+            keywordsParam = defaultKeywords[i].join(",");
+        }
         const keywords = keywordsParam
             ? keywordsParam
                   .split(",")
@@ -164,13 +172,22 @@ http.createServer((req, res) => {
                             return Promise.all(articlePromises).then((results) => {
                                 const categoryResults = categories.map((cat, idx) => {
                                     return results
-                                        .map(({ item, sims, keywordMatches }) => ({
-                                            item,
-                                            similarity: sims[idx].sim,
-                                            subSimilarities: sims[idx].subSims,
-                                            keywords: keywordMatches[idx],
-                                        }))
-                                        .sort((a, b) => b.similarity - a.similarity);
+                                        .map(({ item, sims, keywordMatches }) => {
+                                            const similarity = sims[idx].sim;
+                                            const subSimilarities = sims[idx].subSims;
+                                            const composite = Math.max(
+                                                similarity,
+                                                ...subSimilarities,
+                                            );
+                                            return {
+                                                item,
+                                                similarity,
+                                                subSimilarities,
+                                                keywords: keywordMatches[idx],
+                                                composite,
+                                            };
+                                        })
+                                        .sort((a, b) => b.composite - a.composite);
                                 });
 
                                 const formSections = categories
@@ -211,13 +228,12 @@ http.createServer((req, res) => {
                                         const headerCols = `
                                             <th>Article</th>
                                             <th>Similarity</th>
-                                            <th>Keywords</th>
                                             ${categories[idx].subcategories
                                                 .map((sub) => `<th>${sub}</th>`)
                                                 .join("")}
                                         `;
                                         const rows = catRes
-                                            .map(({ item, similarity, subSimilarities, keywords }) => {
+                                            .map(({ item, similarity, subSimilarities, keywords, composite }) => {
                                                 let img = "";
                                                 if (
                                                     item["media:content"] &&
@@ -236,22 +252,20 @@ http.createServer((req, res) => {
                                                     ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
                                                     : "";
                                                 const highlight =
-                                                    similarity > 0.8
+                                                    composite > 0.8
                                                         ? ' style="background-color: #c8e6c9;"'
                                                         : "";
-                                                const tags = categories[idx].subcategories
-                                                    .map((sub, subIdx) =>
-                                                        subSimilarities[subIdx] >= 0.8
-                                                            ? `<span class="tag" style="background-color:${stringToColor(sub)};">${sub}</span>`
-                                                            : "",
+                                                const tags = keywords
+                                                    .map(
+                                                        (kw) =>
+                                                            `<span class="tag" style="background-color:${stringToColor(kw)};">${kw}</span>`,
                                                     )
                                                     .join(" ");
 
                                                 const subCols = subSimilarities
                                                     .map((sim) => `<td>${sim.toFixed(2)}</td>`)
                                                     .join("");
-                                                const keywordCol = `<td>${keywords.join(", ")}</td>`;
-                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${keywordCol}${subCols}</tr>`;
+                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${subCols}</tr>`;
                                             })
                                             .join("\n");
 

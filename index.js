@@ -51,6 +51,22 @@ function cosineSimilarity(vec1, vec2) {
     return dot / (norm1 * norm2);
 }
 
+function createEmbeddingPromise(text) {
+    return new Promise((resolve, reject) => {
+        createEmbedding(text, (err, result) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            if (!result || !result.data || !result.data[0]) {
+                reject(new Error("No embedding data"));
+                return;
+            }
+            resolve(result.data[0].embedding);
+        });
+    });
+}
+
 // RSS feed URL
 const rssUrl =
     "https://news.google.com/rss/search?q=Business%20News&hl=en-US&gl=US&ceid=US:en";
@@ -74,61 +90,63 @@ http.createServer((req, res) => {
                         return;
                     }
 
-                    const item = result.rss.channel[0].item[0]; // Only the first article
-                    const articleText = `${item.title[0]}\n\n${item.description ? item.description[0] : ""}`;
+                    const items = result.rss.channel[0].item.slice(0, 10);
 
-                    createEmbedding(articleText, (embedErr, embedResult) => {
-                        if (embedErr || !embedResult || !embedResult.data || !embedResult.data[0]) {
+                    createEmbeddingPromise(categoryText)
+                        .then((categoryEmbedding) => {
+                            const promises = items.map((it) => {
+                                const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
+                                return createEmbeddingPromise(articleText).then((articleEmb) => {
+                                    const similarity = cosineSimilarity(articleEmb, categoryEmbedding);
+                                    return { item: it, similarity };
+                                });
+                            });
+
+                            return Promise.all(promises).then((results) => {
+                                results.sort((a, b) => b.similarity - a.similarity);
+
+                                const rows = results
+                                    .map(({ item: it, similarity }) => {
+                                        let img = "";
+                                        if (it["media:content"] && it["media:content"][0].$ && it["media:content"][0].$.url) {
+                                            img = it["media:content"][0].$.url;
+                                        } else if (it.enclosure && it.enclosure[0] && it.enclosure[0].$.url) {
+                                            img = it.enclosure[0].$.url;
+                                        }
+                                        const imgTag = img ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>` : "";
+                                        return `<tr><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td><td>${similarity.toFixed(2)}</td></tr>`;
+                                    })
+                                    .join("\n");
+
+                                const html = `
+                                    <html>
+                                    <head>
+                                        <title>Business News - Top Matches</title>
+                                        <style>
+                                            body { font-family: Arial; padding: 20px; }
+                                            table { border-collapse: collapse; width: 100%; }
+                                            th, td { border: 1px solid #ddd; padding: 8px; }
+                                            th { background-color: #f2f2f2; }
+                                        </style>
+                                    </head>
+                                    <body>
+                                        <h1>Top Articles Matching "${categoryText}"</h1>
+                                        <table>
+                                            <tr><th>Article</th><th>Similarity</th></tr>
+                                            ${rows}
+                                        </table>
+                                    </body>
+                                    </html>
+                                `;
+
+                                res.writeHead(200, { "Content-Type": "text/html" });
+                                res.end(html);
+                            });
+                        })
+                        .catch((error) => {
                             res.writeHead(500, { "Content-Type": "text/plain" });
-                            res.end("Error generating article embedding: " + (embedErr ? embedErr.message : "No data"));
-                            return;
-                        }
-
-                        const articleEmbedding = embedResult.data[0].embedding;
-                        createEmbedding(categoryText, (catErr, catResult) => {
-                            if (catErr || !catResult || !catResult.data || !catResult.data[0]) {
-                                res.writeHead(500, { "Content-Type": "text/plain" });
-                                res.end("Error generating category embedding: " + (catErr ? catErr.message : "No data"));
-                                return;
-                            }
-
-                            const categoryEmbedding = catResult.data[0].embedding;
-                            const similarity = cosineSimilarity(articleEmbedding, categoryEmbedding);
-                            const threshold = 0.75;
-
-                            if (similarity < threshold) {
-                                res.writeHead(200, { "Content-Type": "text/plain" });
-                                res.end(`Article does not match category \"${categoryText}\" (similarity ${similarity.toFixed(2)})`);
-                                return;
-                            }
-
-                            const snippet = JSON.stringify(articleEmbedding.slice(0, 10), null, 2);
-                            const html = `
-                        <html>
-                        <head>
-                            <title>Business News - First Article</title>
-                            <style>
-                                body { font-family: Arial; padding: 20px; }
-                                .json-block { margin-top: 20px; background: #f0f0f0; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
-                            </style>
-                        </head>
-                        <body>
-                            <h1>${item.title[0]}</h1>
-                            <p><a href="${item.link[0]}" target="_blank">Read full article</a></p>
-                            <p><strong>Published:</strong> ${item.pubDate[0]}</p>
-                            <p><strong>Similarity to \"${categoryText}\"</strong>: ${similarity.toFixed(2)}</p>
-                            <h2>Embedding (first 10 values)</h2><div class="json-block">${snippet}</div>
-                            <hr>
-                            <h2>Raw JSON</h2>
-                            <div class="json-block">${JSON.stringify(item, null, 2)}</div>
-                        </body>
-                        </html>
-                    `;
-
-                            res.writeHead(200, { "Content-Type": "text/html" });
-                            res.end(html);
+                            res.end("Error processing articles: " + error.message);
                         });
-                    });
                 });
             });
         })

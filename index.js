@@ -119,49 +119,71 @@ http.createServer((req, res) => {
                             });
 
                             return Promise.all(promises).then((results) => {
-                                results.sort((a, b) =>
-                                    Math.max(...b.similarities) -
-                                    Math.max(...a.similarities),
-                                );
+                                const categoryResults = categoryEmbeddings.map((_, idx) => {
+                                    return results
+                                        .map(({ item: it, similarities }) => ({
+                                            item: it,
+                                            similarity: similarities[idx],
+                                        }))
+                                        .sort((a, b) => b.similarity - a.similarity);
+                                });
 
-                                const rows = results
-                                    .map(({ item: it, similarities }) => {
-                                        let img = "";
-                                        if (
-                                            it["media:content"] &&
-                                            it["media:content"][0].$ &&
-                                            it["media:content"][0].$.url
-                                        ) {
-                                            img = it["media:content"][0].$.url;
-                                        } else if (
-                                            it.enclosure &&
-                                            it.enclosure[0] &&
-                                            it.enclosure[0].$.url
-                                        ) {
-                                            img = it.enclosure[0].$.url;
-                                        }
-                                        const imgTag = img
-                                            ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
-                                            : "";
-                                        const highlight =
-                                            similarities.some((s) => s > 0.8)
-                                                ? ' style="background-color: #c8e6c9;"'
-                                                : '';
-                                        const simTds = similarities
-                                            .map((s) => `<td>${s.toFixed(2)}</td>`)
+                                const sections = categoryResults
+                                    .map((catRes, idx) => {
+                                        const rows = catRes
+                                            .map(({ item: it, similarity }) => {
+                                                let img = "";
+                                                if (
+                                                    it["media:content"] &&
+                                                    it["media:content"][0].$ &&
+                                                    it["media:content"][0].$.url
+                                                ) {
+                                                    img = it["media:content"][0].$.url;
+                                                } else if (
+                                                    it.enclosure &&
+                                                    it.enclosure[0] &&
+                                                    it.enclosure[0].$.url
+                                                ) {
+                                                    img = it.enclosure[0].$.url;
+                                                }
+                                                const imgTag = img
+                                                    ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
+                                                    : "";
+                                                const highlight =
+                                                    similarity > 0.8
+                                                        ? ' style="background-color: #c8e6c9;"'
+                                                        : '';
+                                                return `<tr${highlight}><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td><td>${similarity.toFixed(2)}</td></tr>`;
+                                            })
+                                            .join("\n");
+
+                                        const hiddenInputs = categoryTexts
+                                            .map((txt, j) =>
+                                                j === idx
+                                                    ? ""
+                                                    : `<input type="hidden" name="category${j + 1}" value="${categoryTexts[j]}" />`
+                                            )
                                             .join("");
-                                        return `<tr${highlight}><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td>${simTds}</tr>`;
+                                        const form = `
+                                            <form method="GET" style="margin-bottom:20px;">
+                                                Category ${idx + 1}: <input type="text" name="category${idx + 1}" value="${categoryTexts[idx]}" />
+                                                ${hiddenInputs}
+                                                <button type="submit">Submit</button>
+                                            </form>
+                                        `;
+                                        return `
+                                            <h2>Category ${idx + 1}: ${categoryTexts[idx]}</h2>
+                                            ${form}
+                                            <table>
+                                                <tr>
+                                                    <th>Article</th>
+                                                    <th>Similarity</th>
+                                                </tr>
+                                                ${rows}
+                                            </table>
+                                        `;
                                     })
-                                    .join("\n");
-
-                                const form = `
-                                    <form method="GET" style="margin-bottom:20px;">
-                                        Category 1: <input type="text" name="category1" value="${categoryTexts[0]}" />
-                                        Category 2: <input type="text" name="category2" value="${categoryTexts[1]}" />
-                                        Category 3: <input type="text" name="category3" value="${categoryTexts[2]}" />
-                                        <button type="submit">Submit</button>
-                                    </form>
-                                `;
+                                    .join("<br/>");
 
                                 const html = `
                                     <html>
@@ -169,22 +191,13 @@ http.createServer((req, res) => {
                                         <title>Business News - Top Matches</title>
                                         <style>
                                             body { font-family: Arial; padding: 20px; }
-                                            table { border-collapse: collapse; width: 100%; }
+                                            table { border-collapse: collapse; width: 100%; margin-bottom: 40px; }
                                             th, td { border: 1px solid #ddd; padding: 8px; }
                                             th { background-color: #f2f2f2; }
                                         </style>
                                     </head>
                                     <body>
-                                        ${form}
-                                        <table>
-                                            <tr>
-                                                <th>Article</th>
-                                                <th>Category 1</th>
-                                                <th>Category 2</th>
-                                                <th>Category 3</th>
-                                            </tr>
-                                            ${rows}
-                                        </table>
+                                        ${sections}
                                     </body>
                                     </html>
                                 `;

@@ -89,12 +89,27 @@ http.createServer((req, res) => {
         "Trade and tariff news",
         "Interest rate outlook",
     ];
+    const defaultSubcategories = [
+        ["Nike", "American Airlines", "UnitedHealthcare"],
+        [],
+        [],
+    ];
 
     const categories = defaultCategories.map((def, i) => {
         const idx = i + 1;
         const name = urlObj.searchParams.get(`category${idx}`) || def;
-        const subcategories = urlObj.searchParams.getAll(`subcategory${idx}`);
-        return { name, subcategories };
+        let subcategories = urlObj.searchParams.getAll(`subcategory${idx}`);
+        if (subcategories.length === 0) {
+            subcategories = defaultSubcategories[i] || [];
+        }
+        const keywordsParam = urlObj.searchParams.get(`keywords${idx}`);
+        const keywords = keywordsParam
+            ? keywordsParam
+                  .split(",")
+                  .map((k) => k.trim())
+                  .filter((k) => k)
+            : [];
+        return { name, subcategories, keywords };
     });
 
     https
@@ -131,6 +146,10 @@ http.createServer((req, res) => {
 
                             const articlePromises = items.map((it) => {
                                 const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
+                                const lowerText = articleText.toLowerCase();
+                                const keywordMatches = categories.map((cat) =>
+                                    cat.keywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
+                                );
                                 return createEmbeddingPromise(articleText).then((articleEmb) => {
                                     const sims = categories.map((cat) => {
                                         return {
@@ -138,17 +157,18 @@ http.createServer((req, res) => {
                                             subSims: cat.subEmbeddings.map((subEmb) => cosineSimilarity(articleEmb, subEmb)),
                                         };
                                     });
-                                    return { item: it, sims };
+                                    return { item: it, sims, keywordMatches };
                                 });
                             });
 
                             return Promise.all(articlePromises).then((results) => {
                                 const categoryResults = categories.map((cat, idx) => {
                                     return results
-                                        .map(({ item, sims }) => ({
+                                        .map(({ item, sims, keywordMatches }) => ({
                                             item,
                                             similarity: sims[idx].sim,
                                             subSimilarities: sims[idx].subSims,
+                                            keywords: keywordMatches[idx],
                                         }))
                                         .sort((a, b) => b.similarity - a.similarity);
                                 });
@@ -171,6 +191,9 @@ http.createServer((req, res) => {
                                                 ${subInputs}
                                             </div>
                                             <button type="button" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
+                                            <br/>
+                                            <label>Keywords (comma separated):</label>
+                                            <input type="text" name="keywords${idx + 1}" value="${cat.keywords.join(", ")}" />
                                             <br/><br/>
                                         `;
                                     })
@@ -188,12 +211,13 @@ http.createServer((req, res) => {
                                         const headerCols = `
                                             <th>Article</th>
                                             <th>Similarity</th>
+                                            <th>Keywords</th>
                                             ${categories[idx].subcategories
                                                 .map((sub) => `<th>${sub}</th>`)
                                                 .join("")}
                                         `;
                                         const rows = catRes
-                                            .map(({ item, similarity, subSimilarities }) => {
+                                            .map(({ item, similarity, subSimilarities, keywords }) => {
                                                 let img = "";
                                                 if (
                                                     item["media:content"] &&
@@ -226,7 +250,8 @@ http.createServer((req, res) => {
                                                 const subCols = subSimilarities
                                                     .map((sim) => `<td>${sim.toFixed(2)}</td>`)
                                                     .join("");
-                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${subCols}</tr>`;
+                                                const keywordCol = `<td>${keywords.join(", ")}</td>`;
+                                                return `<tr${highlight}><td>${imgTag} <a href="${item.link[0]}" target="_blank">${item.title[0]}</a> ${tags}</td><td>${similarity.toFixed(2)}</td>${keywordCol}${subCols}</tr>`;
                                             })
                                             .join("\n");
 

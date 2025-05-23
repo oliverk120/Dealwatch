@@ -75,9 +75,17 @@ const rssUrl =
 
 http.createServer((req, res) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
-    const categoryText =
-        urlObj.searchParams.get("category") ||
-        "Articles economic inflation or the impact of tariffs on the economy";
+    const defaultCategories = [
+        "Articles economic inflation or the impact of tariffs on the economy",
+        "Trade and tariff news",
+        "Interest rate outlook",
+    ];
+    const categoryTexts = [
+        urlObj.searchParams.get("category1") || defaultCategories[0],
+        urlObj.searchParams.get("category2") || defaultCategories[1],
+        urlObj.searchParams.get("category3") || defaultCategories[2],
+    ];
+
     https
         .get(rssUrl, (rssRes) => {
             let data = "";
@@ -96,28 +104,28 @@ http.createServer((req, res) => {
 
                     const items = result.rss.channel[0].item.slice(0, 10);
 
-                    createEmbeddingPromise(categoryText)
-                        .then((categoryEmbedding) => {
+                    Promise.all(categoryTexts.map(createEmbeddingPromise))
+                        .then((categoryEmbeddings) => {
                             const promises = items.map((it) => {
                                 const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
                                 return createEmbeddingPromise(articleText).then(
                                     (articleEmb) => {
-                                        const similarity = cosineSimilarity(
-                                            articleEmb,
-                                            categoryEmbedding,
+                                        const sims = categoryEmbeddings.map((ce) =>
+                                            cosineSimilarity(articleEmb, ce),
                                         );
-                                        return { item: it, similarity };
+                                        return { item: it, similarities: sims };
                                     },
                                 );
                             });
 
                             return Promise.all(promises).then((results) => {
-                                results.sort(
-                                    (a, b) => b.similarity - a.similarity,
+                                results.sort((a, b) =>
+                                    Math.max(...b.similarities) -
+                                    Math.max(...a.similarities),
                                 );
 
                                 const rows = results
-                                    .map(({ item: it, similarity }) => {
+                                    .map(({ item: it, similarities }) => {
                                         let img = "";
                                         if (
                                             it["media:content"] &&
@@ -135,9 +143,25 @@ http.createServer((req, res) => {
                                         const imgTag = img
                                             ? `<img src="${img}" alt="" style="max-width: 100px; vertical-align: middle;"/>`
                                             : "";
-                                        return `<tr><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td><td>${similarity.toFixed(2)}</td></tr>`;
+                                        const highlight =
+                                            similarities.some((s) => s > 0.8)
+                                                ? ' style="background-color: #c8e6c9;"'
+                                                : '';
+                                        const simTds = similarities
+                                            .map((s) => `<td>${s.toFixed(2)}</td>`)
+                                            .join("");
+                                        return `<tr${highlight}><td>${imgTag} <a href="${it.link[0]}" target="_blank">${it.title[0]}</a></td>${simTds}</tr>`;
                                     })
                                     .join("\n");
+
+                                const form = `
+                                    <form method="GET" style="margin-bottom:20px;">
+                                        Category 1: <input type="text" name="category1" value="${categoryTexts[0]}" />
+                                        Category 2: <input type="text" name="category2" value="${categoryTexts[1]}" />
+                                        Category 3: <input type="text" name="category3" value="${categoryTexts[2]}" />
+                                        <button type="submit">Submit</button>
+                                    </form>
+                                `;
 
                                 const html = `
                                     <html>
@@ -151,9 +175,14 @@ http.createServer((req, res) => {
                                         </style>
                                     </head>
                                     <body>
-                                        <h1>Top Articles Matching "${categoryText}"</h1>
+                                        ${form}
                                         <table>
-                                            <tr><th>Article</th><th>Similarity</th></tr>
+                                            <tr>
+                                                <th>Article</th>
+                                                <th>Category 1</th>
+                                                <th>Category 2</th>
+                                                <th>Category 3</th>
+                                            </tr>
                                             ${rows}
                                         </table>
                                     </body>

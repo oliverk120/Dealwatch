@@ -207,7 +207,9 @@ http.createServer((req, res) => {
     Promise.all(feedUrls.map((u) => fetchRSS(u).catch(() => null)))
         .then((results) => {
             let items = [];
-            results.forEach((result) => {
+            results.forEach((result, idx) => {
+                const feedUrl = feedUrls[idx];
+                let count = 0;
                 if (
                     result &&
                     result.rss &&
@@ -215,11 +217,16 @@ http.createServer((req, res) => {
                     result.rss.channel[0] &&
                     result.rss.channel[0].item
                 ) {
-                    items = items.concat(
-                        result.rss.channel[0].item.slice(0, 100),
-                    );
+                    const feedItems = result.rss.channel[0].item;
+                    count = feedItems.length;
+                    items = items.concat(feedItems.slice(0, 100));
                 }
+                console.log(
+                    `Feed ${feedUrl} succeeded: ${!!result && count > 0} - items loaded: ${count}`,
+                );
             });
+
+            console.log(`Total items before embedding: ${items.length}`);
 
             if (items.length === 0) {
                 throw new Error("No articles from feeds");

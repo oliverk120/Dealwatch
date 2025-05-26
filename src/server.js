@@ -213,20 +213,27 @@ function createServer() {
                                             )
                                             .join('');
                                         return `
-                                            <h3 class="text-lg font-semibold">Category ${idx + 1}</h3>
-                                            <input class="border p-1 w-full mb-2" type="text" name="category${idx + 1}" value="${cat.name}" />
-                                            <div id="subcategories${idx + 1}">
-                                                ${subInputs}
-                                            </div>
-                                            <button type="button" class="bg-blue-500 text-white px-2 py-1 rounded mb-2" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
-                                            <div class="mb-2">
-                                                <label class="block">Category Keywords:</label>
-                                                <input class="border p-1 w-full" type="text" name="catKeywords${idx + 1}" value="${cat.keywords.join(', ')}" />
-                                            </div>
-                                            <div class="mb-4">
-                                                <label class="block">All Keywords:</label>
-                                                <input class="border p-1 w-full" type="text" value="${cat.allKeywords.join(', ')}" readonly />
-                                            </div>
+                                            <section class="mb-4 border p-2">
+                                                <div class="flex items-center space-x-2 mb-2">
+                                                    <h3 class="text-lg font-semibold">Category ${idx + 1}</h3>
+                                                    <input class="border p-1 flex-1" type="text" name="category${idx + 1}" value="${cat.name}" />
+                                                </div>
+                                                <details class="mb-2">
+                                                    <summary class="cursor-pointer bg-gray-100 p-1 rounded">Subcategories & Keywords</summary>
+                                                    <div class="p-2" id="subcategories${idx + 1}">
+                                                        ${subInputs}
+                                                    </div>
+                                                    <button type="button" class="bg-blue-500 text-white px-2 py-1 rounded mb-2" onclick="addSubcategory(${idx + 1})">Add Subcategory</button>
+                                                    <div class="mb-2">
+                                                        <label class="block">Category Keywords:</label>
+                                                        <input class="border p-1 w-full" type="text" name="catKeywords${idx + 1}" value="${cat.keywords.join(', ')}" />
+                                                    </div>
+                                                    <div class="mb-4">
+                                                        <label class="block">All Keywords:</label>
+                                                        <input class="border p-1 w-full" type="text" value="${cat.allKeywords.join(', ')}" readonly />
+                                                    </div>
+                                                </details>
+                                            </section>
                                         `;
                                     })
                                     .join('');
@@ -245,8 +252,8 @@ function createServer() {
                                             ${feedInputs}
                                         </div>
                                         <button type="button" class="bg-blue-500 text-white px-2 py-1 rounded mb-2" onclick="addFeed()">+ Add Feed</button>
+                                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded mb-4">Load</button>
                                         ${formSections}
-                                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Load</button>
                                     </form>
                                 `;
 
@@ -303,17 +310,39 @@ function createServer() {
                                             )
                                             .join('\n');
 
+                                        const cat = categories[idx];
+                                        const subList = cat.subcategories
+                                            .map(
+                                                (sub) =>
+                                                    `<li><strong>${sub.title}</strong> - ${sub.description} (${sub.keywords.join(', ')})</li>`,
+                                            )
+                                            .join('');
+                                        const kwTags = cat.keywords
+                                            .map((kw) => `<span class="tag" style="background-color:${stringToColor(kw)};">${kw}</span>`)
+                                            .join(' ');
                                         return `
-                                            <h2 class="text-xl font-semibold mb-2">Category ${idx + 1}: ${categories[idx].name}</h2>
-                                            <table class="min-w-full border-collapse mb-10">
-                                                <tr>
-                                                    ${headerCols}
-                                                </tr>
-                                                ${rows}
-                                            </table>
+                                            <section class="mb-10">
+                                                <div class="flex items-center space-x-2 mb-2">
+                                                    <h2 class="text-xl font-semibold">Category ${idx + 1}</h2>
+                                                    <span>${cat.name}</span>
+                                                </div>
+                                                <details class="mb-2">
+                                                    <summary class="cursor-pointer bg-gray-100 p-1 rounded">Subcategories & Keywords</summary>
+                                                    <div class="p-2">
+                                                        <div class="mb-2"><strong>Category Keywords:</strong> ${kwTags}</div>
+                                                        <ul class="list-disc pl-5">${subList}</ul>
+                                                    </div>
+                                                </details>
+                                                <table class="min-w-full border-collapse mb-4">
+                                                    <tr>
+                                                        ${headerCols}
+                                                    </tr>
+                                                    ${rows}
+                                                </table>
+                                            </section>
                                         `;
                                     })
-                                    .join('<br/>');
+                                    .join('');
 
                                 const html = mainTemplate
                                     .replace('{{formHtml}}', formHtml)

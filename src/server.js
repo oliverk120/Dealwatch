@@ -180,23 +180,37 @@ function createServer() {
                         return Promise.all(articlePromises)
                             .then((results) => {
                                 const categoryResults = categories.map((cat, idx) => {
-                                    return results
-                                        .map(({ item, sims, keywordMatches }) => {
-                                            const similarity = sims[idx].sim;
-                                            const subSimilarities = sims[idx].subSims;
-                                            const composite = Math.max(
-                                                similarity,
-                                                ...subSimilarities,
-                                            );
-                                            return {
-                                                item,
-                                                similarity,
-                                                subSimilarities,
-                                                keywords: keywordMatches[idx],
-                                                composite,
-                                            };
-                                        })
+                                    const mapped = results.map(({ item, sims, keywordMatches }) => {
+                                        const similarity = sims[idx].sim;
+                                        const subSimilarities = sims[idx].subSims;
+                                        const composite = Math.max(
+                                            similarity,
+                                            ...subSimilarities,
+                                        );
+                                        return {
+                                            item,
+                                            similarity,
+                                            subSimilarities,
+                                            keywords: keywordMatches[idx],
+                                            composite,
+                                        };
+                                    });
+
+                                    const highComposite = mapped
+                                        .filter((r) => r.composite >= 0.8)
                                         .sort((a, b) => b.composite - a.composite);
+
+                                    const others = mapped.filter((r) => r.composite < 0.8);
+                                    const keywordSorted = others
+                                        .filter((r) => r.keywords.length > 0)
+                                        .sort((a, b) => b.keywords.length - a.keywords.length);
+
+                                    const remaining = others
+                                        .filter((r) => r.keywords.length === 0)
+                                        .sort((a, b) => b.composite - a.composite)
+                                        .slice(0, 5);
+
+                                    return [...highComposite, ...keywordSorted, ...remaining];
                                 });
 
                                 const formSections = categories

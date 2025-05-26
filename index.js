@@ -110,7 +110,7 @@ http.createServer((req, res) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
     const defaultCategories = [
         "News impacting middle market companies in North America",
-        "Articles about mergers and acquisitions involving private equity companies in North America",
+        "Articles about tariffs and trade war related news",
     ];
     const defaultSubcategories = [
         [
@@ -143,9 +143,10 @@ http.createServer((req, res) => {
         ],
         [
             {
-                title: "Steel Tariffs",
-                description: "US steel and aluminum tariffs",
-                keywords: ["steel", "tariff"],
+                title: "Private equity news",
+                description:
+                    "news about private equity companies acquiring firms in north america. Focused on middle market or lower middle market firms. Anything relating to private equity firm x acquiring another firm",
+                keywords: ["acquired", "private equity"],
             },
         ],
     ];
@@ -215,7 +216,7 @@ http.createServer((req, res) => {
                     result.rss.channel[0].item
                 ) {
                     items = items.concat(
-                        result.rss.channel[0].item.slice(0, 10),
+                        result.rss.channel[0].item.slice(0, 100),
                     );
                 }
             });

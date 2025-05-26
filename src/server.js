@@ -1,8 +1,15 @@
 const http = require('http');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
 const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
+
+const mainTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'main.html'),
+    'utf8',
+);
 
 function stringToColor(str) {
     let hash = 0;
@@ -308,61 +315,9 @@ function createServer() {
                                     })
                                     .join('<br/>');
 
-                                const html = `
-                                    <html>
-                                    <head>
-                                        <title>Business News - Top Matches</title>
-                                        <style>
-                                            .tag { padding: 2px 4px; border-radius: 3px; font-size: 0.8em; margin-left: 4px; display: inline-block; color: #000; }
-                                        </style>
-                                        <script src="https://cdn.tailwindcss.com"></script>
-                                        <script>
-        function addSubcategory(idx) {
-                                                var container = document.getElementById('subcategories' + idx);
-                                                var div = document.createElement('div');
-                                                div.className = 'mb-2 flex flex-wrap items-center space-x-2';
-                                                var title = document.createElement('input');
-                                                title.type = 'text';
-                                                title.name = 'subcategory' + idx + 'Title';
-                                                title.placeholder = 'Title';
-                                                title.className = 'border p-1 flex-1';
-                                                div.appendChild(title);
-                                                var desc = document.createElement('textarea');
-                                                desc.name = 'subcategory' + idx + 'Desc';
-                                                desc.placeholder = 'Description';
-                                                desc.className = 'border p-1 flex-1';
-                                                div.appendChild(desc);
-                                                var kw = document.createElement('input');
-                                                kw.type = 'text';
-                                                kw.name = 'subcategory' + idx + 'Keywords';
-                                                kw.placeholder = 'Keywords';
-                                                kw.className = 'border p-1 flex-1';
-                                                div.appendChild(kw);
-                                                var btn = document.createElement('button');
-                                                btn.type = 'button';
-                                                btn.innerHTML = '&#x2716;';
-                                                btn.className = 'text-red-500 font-bold px-2';
-                                                btn.onclick = function(){ div.remove(); };
-                                                div.appendChild(btn);
-            container.appendChild(div);
-       }
-        function addFeed() {
-            var container = document.getElementById('rssFeeds');
-            var input = document.createElement('input');
-            input.type = 'text';
-            input.name = 'feed';
-            input.placeholder = 'RSS Feed URL';
-            input.className = 'border p-1 w-full mb-2';
-            container.appendChild(input);
-        }
-                                        </script>
-                                    </head>
-                                    <body class="font-sans p-5">
-                                        ${formHtml}
-                                        ${sections}
-                                    </body>
-                                    </html>
-                                `;
+                                const html = mainTemplate
+                                    .replace('{{formHtml}}', formHtml)
+                                    .replace('{{sections}}', sections);
 
                                 res.writeHead(200, {
                                     'Content-Type': 'text/html',

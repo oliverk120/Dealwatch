@@ -78,9 +78,35 @@ function stringToColor(str) {
     return `hsl(${hue}, 70%, 80%)`;
 }
 
-// RSS feed URL
-const rssUrl =
-    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147";
+// Default RSS feed URLs
+const defaultFeeds = [
+    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147",
+    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "https://feeds.marketwatch.com/marketwatch/topstories",
+];
+
+function fetchRSS(url) {
+    const lib = url.startsWith("https") ? https : http;
+    return new Promise((resolve, reject) => {
+        lib
+            .get(url, (rssRes) => {
+                let data = "";
+                rssRes.on("data", (chunk) => {
+                    data += chunk;
+                });
+                rssRes.on("end", () => {
+                    parseString(data, (err, result) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        resolve(result);
+                    });
+                });
+            })
+            .on("error", reject);
+    });
+}
 
 http.createServer((req, res) => {
     const urlObj = new URL(req.url, `http://${req.headers.host}`);
@@ -155,58 +181,72 @@ http.createServer((req, res) => {
         return { name, subcategories, keywords, allKeywords };
     });
 
-    https
-        .get(rssUrl, (rssRes) => {
-            let data = "";
+    const feedParams = urlObj.searchParams.getAll("feed");
+    const feedUrls = feedParams.length > 0 ? feedParams : defaultFeeds;
 
-            rssRes.on("data", (chunk) => {
-                data += chunk;
+    Promise.all(feedUrls.map((u) => fetchRSS(u).catch(() => null)))
+        .then((results) => {
+            let items = [];
+            results.forEach((result) => {
+                if (
+                    result &&
+                    result.rss &&
+                    result.rss.channel &&
+                    result.rss.channel[0] &&
+                    result.rss.channel[0].item
+                ) {
+                    items = items.concat(result.rss.channel[0].item.slice(0, 10));
+                }
             });
 
-            rssRes.on("end", () => {
-                parseString(data, (err, result) => {
-                    if (err) {
-                        res.writeHead(500, { "Content-Type": "text/plain" });
-                        res.end("Failed to parse RSS feed");
-                        return;
-                    }
+            if (items.length === 0) {
+                throw new Error("No articles from feeds");
+            }
 
-                    const items = result.rss.channel[0].item.slice(0, 10);
+            const embeddingTexts = [];
+            categories.forEach((cat) => {
+                embeddingTexts.push(cat.name);
+                cat.subcategories.forEach((sub) =>
+                    embeddingTexts.push(`${sub.title}\n\n${sub.description}`),
+                );
+            });
 
-                    const embeddingTexts = [];
+            return Promise.all(embeddingTexts.map(createEmbeddingPromise)).then(
+                (embeds) => {
+                    let pos = 0;
                     categories.forEach((cat) => {
-                        embeddingTexts.push(cat.name);
-                        cat.subcategories.forEach((sub) =>
-                            embeddingTexts.push(`${sub.title}\n\n${sub.description}`),
+                        cat.embedding = embeds[pos++];
+                        cat.subEmbeddings = cat.subcategories.map(() =>
+                            embeds[pos++],
                         );
                     });
 
-                    Promise.all(embeddingTexts.map(createEmbeddingPromise))
-                        .then((embeds) => {
-                            let pos = 0;
-                            categories.forEach((cat) => {
-                                cat.embedding = embeds[pos++];
-                                cat.subEmbeddings = cat.subcategories.map(() => embeds[pos++]);
-                            });
-
-                            const articlePromises = items.map((it) => {
-                                const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ""}`;
-                                const lowerText = articleText.toLowerCase();
-                                const keywordMatches = categories.map((cat) =>
-                                    cat.allKeywords.filter((kw) =>
-                                        lowerText.includes(kw.toLowerCase()),
-                                    ),
-                                );
-                                return createEmbeddingPromise(articleText).then((articleEmb) => {
-                                    const sims = categories.map((cat) => {
-                                        return {
-                                            sim: cosineSimilarity(articleEmb, cat.embedding),
-                                            subSims: cat.subEmbeddings.map((subEmb) => cosineSimilarity(articleEmb, subEmb)),
-                                        };
-                                    });
-                                    return { item: it, sims, keywordMatches };
+                    const articlePromises = items.map((it) => {
+                        const articleText = `${it.title[0]}\n\n${
+                            it.description ? it.description[0] : ""
+                        }`;
+                        const lowerText = articleText.toLowerCase();
+                        const keywordMatches = categories.map((cat) =>
+                            cat.allKeywords.filter((kw) =>
+                                lowerText.includes(kw.toLowerCase()),
+                            ),
+                        );
+                        return createEmbeddingPromise(articleText).then(
+                            (articleEmb) => {
+                                const sims = categories.map((cat) => {
+                                    return {
+                                        sim: cosineSimilarity(articleEmb, cat.embedding),
+                                        subSims: cat.subEmbeddings.map((subEmb) =>
+                                            cosineSimilarity(articleEmb, subEmb),
+                                        ),
+                                    };
                                 });
-                            });
+                                return { item: it, sims, keywordMatches };
+                            },
+                        );
+                    });
+
+                    return Promise.all(articlePromises).then((results) => {
 
                             return Promise.all(articlePromises).then((results) => {
                                 const categoryResults = categories.map((cat, idx) => {
@@ -261,10 +301,22 @@ http.createServer((req, res) => {
                                     })
                                     .join("");
 
+                                const feedInputs = feedUrls
+                                    .map(
+                                        (u) =>
+                                            `<input class="border p-1 w-full mb-2" type="text" name="feed" value="${u}" placeholder="RSS Feed URL" />`,
+                                    )
+                                    .join("");
+
                                 const formHtml = `
                                     <form method="GET" class="mb-6 space-y-4">
+                                        <h3 class="text-lg font-semibold">RSS Feeds</h3>
+                                        <div id="rssFeeds">
+                                            ${feedInputs}
+                                        </div>
+                                        <button type="button" class="bg-blue-500 text-white px-2 py-1 rounded mb-2" onclick="addFeed()">+ Add Feed</button>
                                         ${formSections}
-                                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Submit</button>
+                                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Load</button>
                                     </form>
                                 `;
 
@@ -335,7 +387,7 @@ http.createServer((req, res) => {
                                         </style>
                                         <script src="https://cdn.tailwindcss.com"></script>
                                         <script>
-                                            function addSubcategory(idx) {
+        function addSubcategory(idx) {
                                                 var container = document.getElementById('subcategories' + idx);
                                                 var div = document.createElement('div');
                                                 div.className = 'mb-2 flex flex-wrap items-center space-x-2';
@@ -362,8 +414,17 @@ http.createServer((req, res) => {
                                                 btn.className = 'text-red-500 font-bold px-2';
                                                 btn.onclick = function(){ div.remove(); };
                                                 div.appendChild(btn);
-                                                container.appendChild(div);
-                                           }
+            container.appendChild(div);
+       }
+        function addFeed() {
+            var container = document.getElementById('rssFeeds');
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'feed';
+            input.placeholder = 'RSS Feed URL';
+            input.className = 'border p-1 w-full mb-2';
+            container.appendChild(input);
+        }
                                         </script>
                                     </head>
                                     <body class="font-sans p-5">
@@ -387,12 +448,11 @@ http.createServer((req, res) => {
                                 "Error processing articles: " + error.message,
                             );
                         });
-                });
-            });
+                })
         })
-        .on("error", (err) => {
+        .catch((error) => {
             res.writeHead(500, { "Content-Type": "text/plain" });
-            res.end("Error fetching RSS feed: " + err.message);
+            res.end("Error processing articles: " + error.message);
         });
 }).listen(3000, () => {
     console.log("Server running at http://localhost:3000/");

@@ -85,24 +85,22 @@ const defaultFeeds = [
     "https://www.cbc.ca/webfeed/rss/rss-business",
 ];
 
-function fetchRSS(url) {
-    const lib = url.startsWith("https") ? https : http;
+async function fetchRSS(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(
+            `Failed to fetch RSS: ${response.status} ${response.statusText}`,
+        );
+    }
+    const data = await response.text();
     return new Promise((resolve, reject) => {
-        lib.get(url, (rssRes) => {
-            let data = "";
-            rssRes.on("data", (chunk) => {
-                data += chunk;
-            });
-            rssRes.on("end", () => {
-                parseString(data, (err, result) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    resolve(result);
-                });
-            });
-        }).on("error", reject);
+        parseString(data, (err, result) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(result);
+        });
     });
 }
 

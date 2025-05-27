@@ -8,13 +8,29 @@
         <a href="/" class="text-blue-600">Home</a>
         <a href="/database" class="text-blue-600">Database</a>
     </nav>
-    <table class="min-w-full border-collapse">
-        <tr>
-            <th class="border px-2 py-1">ID</th>
-            <th class="border px-2 py-1">Title</th>
-            <th class="border px-2 py-1">Link</th>
-        </tr>
-        {{rows}}
+    <input id="searchInput" type="text" placeholder="Search" class="border p-2 mb-4 w-full" oninput="filterRows()" />
+    <table id="articlesTable" class="min-w-full border-collapse">
+        <thead>
+            <tr>
+                <th class="border px-2 py-1">ID</th>
+                <th class="border px-2 py-1">Image</th>
+                <th class="border px-2 py-1">Title</th>
+                <th class="border px-2 py-1">Link</th>
+                <th class="border px-2 py-1">Embedding</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{rows}}
+        </tbody>
     </table>
+    <script>
+        function filterRows() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            document.querySelectorAll('#articlesTable tbody tr').forEach(tr => {
+                const text = tr.innerText.toLowerCase();
+                tr.style.display = text.includes(q) ? '' : 'none';
+            });
+        }
+    </script>
 </body>
 </html>

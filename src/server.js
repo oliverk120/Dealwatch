@@ -5,10 +5,19 @@ const path = require('path');
 const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
-const { initDB, saveArticle, getArticles } = require('./db');
+const {
+    initDB,
+    saveArticle,
+    getArticles,
+    getArticleByLink,
+} = require('./db');
 
 const mainTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'main.html'),
+    'utf8',
+);
+const databaseTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'database.html'),
     'utf8',
 );
 
@@ -36,6 +45,25 @@ function createServer() {
                 .then((rows) => {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify(rows));
+                })
+                .catch(() => {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Error retrieving articles');
+                });
+            return;
+        }
+        if (urlObj.pathname === '/database') {
+            getArticles()
+                .then((rows) => {
+                    const rowsHtml = rows
+                        .map(
+                            (r) =>
+                                `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.title}</a></td><td class="border px-2 py-1">${r.link}</td></tr>`,
+                        )
+                        .join('');
+                    const html = databaseTemplate.replace('{{rows}}', rowsHtml);
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(html);
                 })
                 .catch(() => {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -150,9 +178,6 @@ function createServer() {
                     ) {
                         const feedItems = result.rss.channel[0].item.slice(0, 50);
                         items = items.concat(feedItems);
-                        feedItems.forEach((it) => {
-                            saveArticle(it.title[0], it.link[0]).catch(() => {});
-                        });
                     }
                 });
 
@@ -182,17 +207,29 @@ function createServer() {
                             const keywordMatches = categories.map((cat) =>
                                 cat.allKeywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
                             );
-                            return createEmbeddingPromise(articleText).then((articleEmb) => {
-                                const sims = categories.map((cat) => {
-                                    return {
-                                        sim: cosineSimilarity(articleEmb, cat.embedding),
-                                        subSims: cat.subEmbeddings.map((subEmb) =>
-                                            cosineSimilarity(articleEmb, subEmb),
-                                        ),
-                                    };
+
+                            return getArticleByLink(it.link[0])
+                                .catch(() => null)
+                                .then((row) => {
+                                    if (row && row.embedding) {
+                                        return JSON.parse(row.embedding);
+                                    }
+                                    return createEmbeddingPromise(articleText).then((emb) => {
+                                        saveArticle(it.title[0], it.link[0], emb).catch(() => {});
+                                        return emb;
+                                    });
+                                })
+                                .then((articleEmb) => {
+                                    const sims = categories.map((cat) => {
+                                        return {
+                                            sim: cosineSimilarity(articleEmb, cat.embedding),
+                                            subSims: cat.subEmbeddings.map((subEmb) =>
+                                                cosineSimilarity(articleEmb, subEmb),
+                                            ),
+                                        };
+                                    });
+                                    return { item: it, sims, keywordMatches };
                                 });
-                                return { item: it, sims, keywordMatches };
-                            });
                         });
 
                         return Promise.all(articlePromises)

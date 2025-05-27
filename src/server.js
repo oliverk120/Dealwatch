@@ -56,10 +56,18 @@ function createServer() {
             getArticles()
                 .then((rows) => {
                     const rowsHtml = rows
-                        .map(
-                            (r) =>
-                                `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.title}</a></td><td class="border px-2 py-1">${r.link}</td></tr>`,
-                        )
+                        .map((r) => {
+                            const imgTag = r.image
+                                ? `<img src="${r.image}" class="max-w-[100px]"/>`
+                                : '';
+                            const embShort = r.embedding
+                                ? JSON.parse(r.embedding)
+                                      .slice(0, 3)
+                                      .map((n) => n.toFixed(2))
+                                      .join(', ') + '...'
+                                : '';
+                            return `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1">${imgTag}</td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.title}</a></td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.link}</a></td><td class="border px-2 py-1 text-xs">${embShort}</td></tr>`;
+                        })
                         .join('');
                     const html = databaseTemplate.replace('{{rows}}', rowsHtml);
                     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -203,6 +211,20 @@ function createServer() {
 
                         const articlePromises = items.map((it) => {
                             const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ''}`;
+                            let img = '';
+                            if (
+                                it['media:content'] &&
+                                it['media:content'][0] &&
+                                it['media:content'][0].$.url
+                            ) {
+                                img = it['media:content'][0].$.url;
+                            } else if (
+                                it.enclosure &&
+                                it.enclosure[0] &&
+                                it.enclosure[0].$.url
+                            ) {
+                                img = it.enclosure[0].$.url;
+                            }
                             const lowerText = articleText.toLowerCase();
                             const keywordMatches = categories.map((cat) =>
                                 cat.allKeywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
@@ -215,7 +237,7 @@ function createServer() {
                                         return JSON.parse(row.embedding);
                                     }
                                     return createEmbeddingPromise(articleText).then((emb) => {
-                                        saveArticle(it.title[0], it.link[0], emb).catch(() => {});
+                                        saveArticle(it.title[0], it.link[0], emb, img).catch(() => {});
                                         return emb;
                                     });
                                 })

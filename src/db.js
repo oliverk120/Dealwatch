@@ -3,8 +3,11 @@ const path = require('path');
 
 let db;
 
-function initDB() {
-  const dbPath = path.join(__dirname, '..', 'database.db');
+function initDB(customPath) {
+  const dbPath =
+    customPath ||
+    process.env.DATABASE_PATH ||
+    path.join(__dirname, '..', 'database.db');
   db = new sqlite3.Database(dbPath);
   db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS articles (
@@ -43,4 +46,11 @@ function getArticles() {
   });
 }
 
-module.exports = { initDB, saveArticle, getArticles };
+function closeDB() {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
+module.exports = { initDB, saveArticle, getArticles, closeDB };

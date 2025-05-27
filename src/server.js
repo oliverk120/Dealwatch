@@ -11,6 +11,10 @@ const mainTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'main.html'),
     'utf8',
 );
+const databaseTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'database.html'),
+    'utf8',
+);
 
 function stringToColor(str) {
     let hash = 0;
@@ -36,6 +40,25 @@ function createServer() {
                 .then((rows) => {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify(rows));
+                })
+                .catch(() => {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Error retrieving articles');
+                });
+            return;
+        }
+        if (urlObj.pathname === '/database') {
+            getArticles()
+                .then((rows) => {
+                    const rowsHtml = rows
+                        .map(
+                            (r) =>
+                                `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.title}</a></td><td class="border px-2 py-1">${r.link}</td></tr>`,
+                        )
+                        .join('');
+                    const html = databaseTemplate.replace('{{rows}}', rowsHtml);
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(html);
                 })
                 .catch(() => {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });

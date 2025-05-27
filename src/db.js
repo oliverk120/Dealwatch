@@ -71,4 +71,6 @@ function closeDB() {
   }
 }
 
+
 module.exports = { initDB, saveArticle, getArticles, getArticleByLink, closeDB };
+

@@ -412,25 +412,27 @@ function createServer() {
                                             .map((kw) => `<span class="tag" style="background-color:${stringToColor(kw)};">${kw}</span>`)
                                             .join(' ');
                                         return `
-                                            <section class="mb-10">
-                                                <div class="flex items-center space-x-2 mb-2">
+                                            <details class="mb-10" open>
+                                                <summary class="cursor-pointer flex items-center space-x-2 mb-2">
                                                     <h2 class="text-xl font-semibold">Category ${idx + 1}</h2>
                                                     <span>${cat.name}</span>
+                                                </summary>
+                                                <div class="p-2">
+                                                    <details class="mb-2">
+                                                        <summary class="cursor-pointer bg-gray-100 p-1 rounded">Subcategories & Keywords</summary>
+                                                        <div class="p-2">
+                                                            <div class="mb-2"><strong>Category Keywords:</strong> ${kwTags}</div>
+                                                            <ul class="list-disc pl-5">${subList}</ul>
+                                                        </div>
+                                                    </details>
+                                                    <table class="min-w-full border-collapse mb-4">
+                                                        <tr>
+                                                            ${headerCols}
+                                                        </tr>
+                                                        ${rows}
+                                                    </table>
                                                 </div>
-                                                <details class="mb-2">
-                                                    <summary class="cursor-pointer bg-gray-100 p-1 rounded">Subcategories & Keywords</summary>
-                                                    <div class="p-2">
-                                                        <div class="mb-2"><strong>Category Keywords:</strong> ${kwTags}</div>
-                                                        <ul class="list-disc pl-5">${subList}</ul>
-                                                    </div>
-                                                </details>
-                                                <table class="min-w-full border-collapse mb-4">
-                                                    <tr>
-                                                        ${headerCols}
-                                                    </tr>
-                                                    ${rows}
-                                                </table>
-                                            </section>
+                                            </details>
                                         `;
                                     })
                                     .join('');

@@ -5,6 +5,7 @@ const path = require('path');
 const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
+const { initDB, saveArticle, getArticles } = require('./db');
 
 const mainTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'main.html'),
@@ -29,6 +30,19 @@ const defaultFeeds = [
 function createServer() {
     return http.createServer((req, res) => {
         const urlObj = new URL(req.url, `http://${req.headers.host}`);
+
+        if (urlObj.pathname === '/articles') {
+            getArticles()
+                .then((rows) => {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(rows));
+                })
+                .catch(() => {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Error retrieving articles');
+                });
+            return;
+        }
         const defaultCategories = [
             'Newpoint Capital Partners Deals',
             'Middle market private equity firms acquires',
@@ -134,7 +148,11 @@ function createServer() {
                         result.rss.channel[0] &&
                         result.rss.channel[0].item
                     ) {
-                        items = items.concat(result.rss.channel[0].item.slice(0, 50));
+                        const feedItems = result.rss.channel[0].item.slice(0, 50);
+                        items = items.concat(feedItems);
+                        feedItems.forEach((it) => {
+                            saveArticle(it.title[0], it.link[0]).catch(() => {});
+                        });
                     }
                 });
 
@@ -384,6 +402,7 @@ function createServer() {
 }
 
 function startServer(port = 3000) {
+    initDB();
     const server = createServer();
     server.listen(port, () => {
         console.log(`Server running at http://localhost:${port}/`);

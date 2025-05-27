@@ -5,6 +5,7 @@ const path = require('path');
 const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
+const { initializeDb, saveArticle, getArticleByLink } = require('./database');
 
 const mainTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'main.html'),
@@ -126,7 +127,7 @@ function createServer() {
         Promise.all(feedUrls.map((u) => fetchRSS(u).catch(() => null)))
             .then((results) => {
                 let items = [];
-                results.forEach((result) => {
+                results.forEach((result, idx) => {
                     if (
                         result &&
                         result.rss &&
@@ -134,7 +135,11 @@ function createServer() {
                         result.rss.channel[0] &&
                         result.rss.channel[0].item
                     ) {
-                        items = items.concat(result.rss.channel[0].item.slice(0, 50));
+                        items = items.concat(
+                            result.rss.channel[0].item
+                                .slice(0, 50)
+                                .map((it) => Object.assign({ _feed_url: feedUrls[idx] }, it)),
+                        );
                     }
                 });
 
@@ -158,23 +163,42 @@ function createServer() {
                             cat.subEmbeddings = cat.subcategories.map(() => embeds[pos++]);
                         });
 
-                        const articlePromises = items.map((it) => {
+                        const articlePromises = items.map(async (it) => {
+                            const link = it.link[0];
                             const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ''}`;
                             const lowerText = articleText.toLowerCase();
                             const keywordMatches = categories.map((cat) =>
                                 cat.allKeywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
                             );
-                            return createEmbeddingPromise(articleText).then((articleEmb) => {
-                                const sims = categories.map((cat) => {
-                                    return {
-                                        sim: cosineSimilarity(articleEmb, cat.embedding),
-                                        subSims: cat.subEmbeddings.map((subEmb) =>
-                                            cosineSimilarity(articleEmb, subEmb),
-                                        ),
-                                    };
-                                });
-                                return { item: it, sims, keywordMatches };
+
+                            let articleEmb;
+                            const existing = getArticleByLink(link);
+                            if (existing) {
+                                articleEmb = existing.embedding;
+                            } else {
+                                articleEmb = await createEmbeddingPromise(articleText);
+                                saveArticle(
+                                    {
+                                        link,
+                                        title: it.title[0],
+                                        description: it.description ? it.description[0] : '',
+                                        pubDate: it.pubDate ? it.pubDate[0] : '',
+                                        feed_url: it._feed_url,
+                                        item_json: it,
+                                    },
+                                    articleEmb,
+                                );
+                            }
+
+                            const sims = categories.map((cat) => {
+                                return {
+                                    sim: cosineSimilarity(articleEmb, cat.embedding),
+                                    subSims: cat.subEmbeddings.map((subEmb) =>
+                                        cosineSimilarity(articleEmb, subEmb),
+                                    ),
+                                };
                             });
+                            return { item: it, sims, keywordMatches };
                         });
 
                         return Promise.all(articlePromises)
@@ -384,6 +408,7 @@ function createServer() {
 }
 
 function startServer(port = 3000) {
+    initializeDb(process.env.DB_PATH || path.join(__dirname, '..', 'articles.sqlite'));
     const server = createServer();
     server.listen(port, () => {
         console.log(`Server running at http://localhost:${port}/`);

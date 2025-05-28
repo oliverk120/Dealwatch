@@ -70,7 +70,7 @@ function createServer() {
                                       .map((n) => n.toFixed(2))
                                       .join(', ') + '...'
                                 : '';
-                            return `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1">${imgTag}</td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.title}</a></td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.link}</a></td><td class="border px-2 py-1 text-xs">${embShort}</td></tr>`;
+                            return `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1">${imgTag}</td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.title}</a></td><td class="border px-2 py-1"><a href="${r.link}" target="_blank">${r.link}</a></td><td class="border px-2 py-1">${r.published || ''}</td><td class="border px-2 py-1 text-xs">${embShort}</td></tr>`;
                         })
                         .join('');
                     const html = databaseTemplate.replace('{{rows}}', rowsHtml);
@@ -83,7 +83,7 @@ function createServer() {
                 });
             return;
         }
-        if (urlObj.pathname === '/experiment') {
+        if (urlObj.pathname === '/' || urlObj.pathname === '/experiment') {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(experimentTemplate);
             return;
@@ -276,6 +276,16 @@ function createServer() {
                             ) {
                                 img = it.enclosure[0].$.url;
                             }
+                            let published = '';
+                            if (it.pubDate && it.pubDate[0]) published = it.pubDate[0];
+                            else if (it.published && it.published[0]) published = it.published[0];
+                            else if (it['dc:date'] && it['dc:date'][0]) published = it['dc:date'][0];
+                            let pubIso = new Date().toISOString();
+                            if (published) {
+                                const d = new Date(published);
+                                if (!isNaN(d.getTime())) pubIso = d.toISOString();
+                            }
+
                             const lowerText = articleText.toLowerCase();
                             const keywordMatches = categories.map((cat) =>
                                 cat.allKeywords.filter((kw) => lowerText.includes(kw.toLowerCase())),
@@ -288,7 +298,7 @@ function createServer() {
                                         return JSON.parse(row.embedding);
                                     }
                                     return createEmbeddingPromise(articleText).then((emb) => {
-                                        saveArticle(it.title[0], it.link[0], emb, img).catch(() => {});
+                                        saveArticle(it.title[0], it.link[0], emb, img, pubIso).catch(() => {});
                                         return emb;
                                     });
                                 })

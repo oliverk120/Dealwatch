@@ -1,0 +1,48 @@
+<html>
+<head>
+    <title>Embedding Experiment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="font-sans p-5">
+    <nav class="mb-4 space-x-4">
+        <a href="/" class="text-blue-600">Home</a>
+        <a href="/database" class="text-blue-600">Database</a>
+        <a href="/experiment" class="text-blue-600">Experiment</a>
+    </nav>
+    <div class="mb-4">
+        <textarea id="queryText" class="border p-2 w-full" rows="3" placeholder="Enter text"></textarea>
+        <button id="runBtn" class="bg-blue-500 text-white px-4 py-2 mt-2 rounded">Run</button>
+    </div>
+    <table id="resultsTable" class="min-w-full border-collapse">
+        <thead>
+            <tr>
+                <th class="border px-2 py-1">ID</th>
+                <th class="border px-2 py-1">Title</th>
+                <th class="border px-2 py-1">Similarity</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <script>
+        function loadResults(text) {
+            const url = new URL('/experiment/search', window.location.origin);
+            if (text) url.searchParams.set('text', text);
+            fetch(url)
+                .then(r => r.json())
+                .then(rows => {
+                    const tbody = document.querySelector('#resultsTable tbody');
+                    tbody.innerHTML = rows.map(row => {
+                        const sim = row.similarity === null || row.similarity === undefined ? '' : row.similarity.toFixed(2);
+                        return `<tr><td class="border px-2 py-1">${row.id}</td><td class="border px-2 py-1"><a href="${row.link}" target="_blank">${row.title}</a></td><td class="border px-2 py-1">${sim}</td></tr>`;
+                    }).join('');
+                });
+        }
+        document.getElementById('runBtn').addEventListener('click', () => {
+            const text = document.getElementById('queryText').value;
+            loadResults(text);
+        });
+        window.addEventListener('load', () => loadResults(''));
+    </script>
+</body>
+</html>

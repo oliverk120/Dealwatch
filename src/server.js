@@ -20,6 +20,10 @@ const databaseTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'database.html'),
     'utf8',
 );
+const experimentTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'experiment.html'),
+    'utf8',
+);
 
 function stringToColor(str) {
     let hash = 0;
@@ -76,6 +80,53 @@ function createServer() {
                 .catch(() => {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     res.end('Error retrieving articles');
+                });
+            return;
+        }
+        if (urlObj.pathname === '/experiment') {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(experimentTemplate);
+            return;
+        }
+        if (urlObj.pathname === '/experiment/search') {
+            const text = urlObj.searchParams.get('text') || '';
+            getArticles()
+                .then((rows) => {
+                    const limited = rows.slice(0, 50);
+                    const respond = (emb) => {
+                        const results = limited.map((r) => {
+                            let sim = null;
+                            if (text && r.embedding) {
+                                try {
+                                    const artEmb = JSON.parse(r.embedding);
+                                    sim = cosineSimilarity(emb, artEmb);
+                                } catch {}
+                            }
+                            return {
+                                id: r.id,
+                                title: r.title,
+                                link: r.link,
+                                similarity: sim,
+                            };
+                        });
+                        results.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify(results));
+                    };
+                    if (!text) {
+                        respond([]);
+                        return;
+                    }
+                    createEmbeddingPromise(text)
+                        .then(respond)
+                        .catch((err) => {
+                            res.writeHead(500, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: err.message }));
+                        });
+                })
+                .catch((err) => {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: err.message }));
                 });
             return;
         }

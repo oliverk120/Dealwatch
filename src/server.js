@@ -6,6 +6,7 @@ const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
 const { FilterManager } = require('./filters/filterManager');
+const { scrapeToRSS, scrapeLinks } = require('./scraper');
 const {
     initDB,
     saveArticle,
@@ -23,6 +24,10 @@ const databaseTemplate = fs.readFileSync(
 );
 const experimentTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'experiment.html'),
+    'utf8',
+);
+const scraperTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'scraper.html'),
     'utf8',
 );
 
@@ -55,6 +60,39 @@ function createServer() {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     res.end('Error retrieving articles');
                 });
+            return;
+        }
+        if (urlObj.pathname === '/scrape') {
+            const siteUrl = urlObj.searchParams.get('url');
+            if (!siteUrl) {
+                const html = scraperTemplate
+                    .replace('{{url}}', '')
+                    .replace('{{table}}', '');
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(html);
+            } else {
+                scrapeLinks(siteUrl)
+                    .then((items) => {
+                        const rows = items
+                            .map((it) => {
+                                return `<tr><td class="border px-2 py-1">${it.title}</td><td class="border px-2 py-1"><a href="${it.link}" target="_blank">${it.link}</a></td></tr>`;
+                            })
+                            .join('');
+                        const tableHtml =
+                            '<table class="min-w-full border-collapse mt-4"><thead><tr><th class="border px-2 py-1">Title</th><th class="border px-2 py-1">Link</th></tr></thead><tbody>' +
+                            rows +
+                            '</tbody></table>';
+                        const html = scraperTemplate
+                            .replace('{{url}}', siteUrl)
+                            .replace('{{table}}', tableHtml);
+                        res.writeHead(200, { 'Content-Type': 'text/html' });
+                        res.end(html);
+                    })
+                    .catch((err) => {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error scraping site: ' + err.message);
+                    });
+            }
             return;
         }
         if (urlObj.pathname === '/database') {

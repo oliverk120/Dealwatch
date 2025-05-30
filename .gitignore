@@ -131,3 +131,6 @@ dist
 
 # Replit debugger
 .breakpoints
+
+# don't update the database
+.database.db

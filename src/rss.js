@@ -7,7 +7,9 @@ async function fetchRSS(url) {
     }
     const data = await response.text();
     return new Promise((resolve, reject) => {
-        parseString(data, (err, result) => {
+        // Some feeds include unescaped characters like '&'.
+        // Use non-strict parsing so xml2js can handle them.
+        parseString(data, { strict: false }, (err, result) => {
             if (err) {
                 reject(err);
                 return;

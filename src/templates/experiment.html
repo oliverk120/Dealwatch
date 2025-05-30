@@ -12,6 +12,7 @@
     <div class="mb-4 space-y-2">
         <textarea id="queryText" class="border p-2 w-full" rows="3" placeholder="Enter text"></textarea>
         <input id="keywordsInput" class="border p-2 w-full" type="text" placeholder="Keywords (comma separated)" />
+        <input id="feedInput" class="border p-2 w-full" type="text" placeholder="RSS feed URL (leave blank for database)" />
         <div class="flex items-center space-x-2">
             <label for="thresholdInput">Threshold:</label>
             <input id="thresholdInput" class="border p-1" type="number" min="0" max="1" step="0.01" value="0.8" />
@@ -37,6 +38,8 @@
             if (text) url.searchParams.set('text', text);
             const kw = document.getElementById('keywordsInput').value;
             if (kw) url.searchParams.set('keywords', kw);
+            const feed = document.getElementById('feedInput').value;
+            if (feed) url.searchParams.set('feed', feed);
             const threshold = document.getElementById('thresholdInput').value;
             if (threshold) url.searchParams.set('threshold', threshold);
             fetch(url)

@@ -96,54 +96,99 @@ function createServer() {
                 .map((k) => k.trim())
                 .filter((k) => k);
             const threshold = parseFloat(urlObj.searchParams.get('threshold') || '0');
+            const feedUrl = urlObj.searchParams.get('feed');
 
-            getArticles()
-                .then((rows) => {
-                    const limited = rows.slice(0, 50);
-                    const respond = (emb) => {
-                        const all = limited.map((r) => {
-                            let sim = null;
-                            if (text && r.embedding) {
-                                try {
-                                    const artEmb = JSON.parse(r.embedding);
-                                    sim = cosineSimilarity(emb, artEmb);
-                                } catch {}
-                            }
-                            let match = false;
-                            if (keywords.length > 0) {
-                                const lower = r.title.toLowerCase();
-                                match = keywords.some((k) => lower.includes(k.toLowerCase()));
-                            }
+            const handleRows = (rows) => {
+                const limited = rows.slice(0, 50);
+                const respond = (emb) => {
+                    const all = limited.map((r, idx) => {
+                        let sim = null;
+                        if (text && r.embedding) {
+                            try {
+                                const artEmb = Array.isArray(r.embedding) ? r.embedding : JSON.parse(r.embedding);
+                                sim = cosineSimilarity(emb, artEmb);
+                            } catch {}
+                        }
+                        let match = false;
+                        if (keywords.length > 0) {
+                            const lower = r.title.toLowerCase();
+                            match = keywords.some((k) => lower.includes(k.toLowerCase()));
+                        }
+                        return {
+                            id: r.id || idx + 1,
+                            title: r.title,
+                            link: r.link,
+                            similarity: sim,
+                            match,
+                        };
+                    });
+                    all.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+                    const filtered = all.filter((r) => r.similarity === null || r.similarity >= threshold);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(
+                        JSON.stringify({ total: all.length, filtered: filtered.length, results: filtered }),
+                    );
+                };
+                if (!text) {
+                    respond([]);
+                    return;
+                }
+                createEmbeddingPromise(text)
+                    .then(respond)
+                    .catch((err) => {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: err.message }));
+                    });
+            };
+
+            if (feedUrl) {
+                fetchRSS(feedUrl)
+                    .then((result) => {
+                        let items = [];
+                        if (
+                            result &&
+                            result.rss &&
+                            result.rss.channel &&
+                            result.rss.channel[0] &&
+                            result.rss.channel[0].item
+                        ) {
+                            items = result.rss.channel[0].item.slice(0, 50);
+                        }
+                        const rows = items.map((it, i) => {
+                            const title = (it.title && it.title[0]) || '';
+                            const desc = (it.description && it.description[0]) || '';
+                            const link = (it.link && it.link[0]) || '';
                             return {
-                                id: r.id,
-                                title: r.title,
-                                link: r.link,
-                                similarity: sim,
-                                match,
+                                id: i + 1,
+                                title,
+                                link,
+                                text: `${title}\n\n${desc}`,
                             };
                         });
-                        all.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-                        const filtered = all.filter((r) => r.similarity === null || r.similarity >= threshold);
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(
-                            JSON.stringify({ total: all.length, filtered: filtered.length, results: filtered }),
-                        );
-                    };
-                    if (!text) {
-                        respond([]);
-                        return;
-                    }
-                    createEmbeddingPromise(text)
-                        .then(respond)
-                        .catch((err) => {
-                            res.writeHead(500, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: err.message }));
-                        });
-                })
-                .catch((err) => {
-                    res.writeHead(500, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: err.message }));
-                });
+                        return Promise.all(
+                            rows.map((r) =>
+                                createEmbeddingPromise(r.text)
+                                    .then((emb) => {
+                                        r.embedding = emb;
+                                    })
+                                    .catch(() => {
+                                        r.embedding = null;
+                                    }),
+                            ),
+                        ).then(() => handleRows(rows));
+                    })
+                    .catch((err) => {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: err.message }));
+                    });
+            } else {
+                getArticles()
+                    .then(handleRows)
+                    .catch((err) => {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: err.message }));
+                    });
+            }
             return;
         }
         const defaultCategories = [

@@ -10,6 +10,9 @@ const {
     saveArticle,
     getArticles,
     getArticleByLink,
+    addFeed,
+    getFeeds,
+    deleteFeed,
 } = require('./db');
 
 const mainTemplate = fs.readFileSync(
@@ -22,6 +25,10 @@ const databaseTemplate = fs.readFileSync(
 );
 const experimentTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'experiment.html'),
+    'utf8',
+);
+const feedsTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'feeds.html'),
     'utf8',
 );
 
@@ -80,6 +87,61 @@ function createServer() {
                 .catch(() => {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     res.end('Error retrieving articles');
+                });
+            return;
+        }
+        if (urlObj.pathname === '/feeds') {
+            if (req.method === 'POST') {
+                let body = '';
+                req.on('data', (c) => (body += c.toString()));
+                req.on('end', () => {
+                    const params = new URLSearchParams(body);
+                    const url = params.get('url');
+                    if (!url) {
+                        res.writeHead(400, { 'Content-Type': 'text/plain' });
+                        res.end('Missing url');
+                        return;
+                    }
+                    addFeed(url)
+                        .then(() => {
+                            res.writeHead(302, { Location: '/feeds' });
+                            res.end();
+                        })
+                        .catch(() => {
+                            res.writeHead(500, { 'Content-Type': 'text/plain' });
+                            res.end('Error adding feed');
+                        });
+                });
+                return;
+            }
+            if (req.method === 'DELETE') {
+                const id = parseInt(urlObj.searchParams.get('id'), 10);
+                deleteFeed(id)
+                    .then(() => {
+                        res.writeHead(200, { 'Content-Type': 'text/plain' });
+                        res.end('ok');
+                    })
+                    .catch(() => {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error deleting feed');
+                    });
+                return;
+            }
+            getFeeds()
+                .then((rows) => {
+                    const rowsHtml = rows
+                        .map(
+                            (r) =>
+                                `<tr><td class="border px-2 py-1">${r.id}</td><td class="border px-2 py-1">${r.url}</td><td class="border px-2 py-1">${r.last_fetched || ''}</td><td class="border px-2 py-1"><button onclick="deleteFeed(${r.id})" class="text-red-600">Delete</button></td></tr>`,
+                        )
+                        .join('');
+                    const html = feedsTemplate.replace('{{rows}}', rowsHtml);
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(html);
+                })
+                .catch(() => {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Error retrieving feeds');
                 });
             return;
         }

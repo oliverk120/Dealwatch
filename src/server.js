@@ -6,6 +6,7 @@ const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
 const { FilterManager } = require('./filters/filterManager');
+const { scrapeToRSS } = require('./scraper');
 const {
     initDB,
     saveArticle,
@@ -23,6 +24,10 @@ const databaseTemplate = fs.readFileSync(
 );
 const experimentTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'experiment.html'),
+    'utf8',
+);
+const scraperTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'scraper.html'),
     'utf8',
 );
 
@@ -55,6 +60,26 @@ function createServer() {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     res.end('Error retrieving articles');
                 });
+            return;
+        }
+        if (urlObj.pathname === '/scrape') {
+            const siteUrl = urlObj.searchParams.get('url');
+            if (!siteUrl) {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(scraperTemplate);
+            } else {
+                scrapeToRSS(siteUrl)
+                    .then((xml) => {
+                        res.writeHead(200, {
+                            'Content-Type': 'application/rss+xml',
+                        });
+                        res.end(xml);
+                    })
+                    .catch((err) => {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error scraping site: ' + err.message);
+                    });
+            }
             return;
         }
         if (urlObj.pathname === '/database') {

@@ -5,6 +5,7 @@ const path = require('path');
 const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
+const { FilterManager } = require('./filters/filterManager');
 const {
     initDB,
     saveArticle,
@@ -100,41 +101,43 @@ function createServer() {
 
             const handleRows = (rows) => {
                 const limited = rows.slice(0, 50);
-                const respond = (emb) => {
+
+                const processWithEmbedding = (emb) => {
+                    const manager = new FilterManager({
+                        keywords,
+                        queryEmbedding: emb,
+                        threshold,
+                    });
+
                     const all = limited.map((r, idx) => {
-                        let sim = null;
-                        if (text && r.embedding) {
-                            try {
-                                const artEmb = Array.isArray(r.embedding) ? r.embedding : JSON.parse(r.embedding);
-                                sim = cosineSimilarity(emb, artEmb);
-                            } catch {}
-                        }
-                        let match = false;
-                        if (keywords.length > 0) {
-                            const lower = r.title.toLowerCase();
-                            match = keywords.some((k) => lower.includes(k.toLowerCase()));
-                        }
+                        const { reasons, similarity } = manager.apply(r);
+                        const match = reasons.some((reason) => reason.startsWith('keywords'));
                         return {
                             id: r.id || idx + 1,
                             title: r.title,
                             link: r.link,
-                            similarity: sim,
+                            similarity,
                             match,
                         };
                     });
+
                     all.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-                    const filtered = all.filter((r) => r.similarity === null || r.similarity >= threshold);
+                    const filtered = all.filter(
+                        (r) => r.similarity === null || r.similarity >= threshold,
+                    );
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(
                         JSON.stringify({ total: all.length, filtered: filtered.length, results: filtered }),
                     );
                 };
+
                 if (!text) {
-                    respond([]);
+                    processWithEmbedding(null);
                     return;
                 }
+
                 createEmbeddingPromise(text)
-                    .then(respond)
+                    .then(processWithEmbedding)
                     .catch((err) => {
                         res.writeHead(500, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ error: err.message }));

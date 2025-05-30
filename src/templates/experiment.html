@@ -10,7 +10,6 @@
         <a href="/experiment" class="text-blue-600">Experiment</a>
     </nav>
     <div class="mb-4 space-y-2">
-        <input id="rssFeed" class="border p-2 w-full" type="text" placeholder="RSS Feed URL" />
         <textarea id="queryText" class="border p-2 w-full" rows="3" placeholder="Enter text"></textarea>
         <input id="keywordsInput" class="border p-2 w-full" type="text" placeholder="Keywords (comma separated)" />
         <div class="flex items-center space-x-2">
@@ -36,8 +35,6 @@
         function loadResults(text) {
             const url = new URL('/experiment/search', window.location.origin);
             if (text) url.searchParams.set('text', text);
-            const feed = document.getElementById('rssFeed').value;
-            if (feed) url.searchParams.set('feed', feed);
             const kw = document.getElementById('keywordsInput').value;
             if (kw) url.searchParams.set('keywords', kw);
             const threshold = document.getElementById('thresholdInput').value;

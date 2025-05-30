@@ -90,7 +90,6 @@ function createServer() {
         }
         if (urlObj.pathname === '/experiment/search') {
             const text = urlObj.searchParams.get('text') || '';
-            const feed = urlObj.searchParams.get('feed');
             const kwParam = urlObj.searchParams.get('keywords') || '';
             const keywords = kwParam
                 .split(',')
@@ -98,54 +97,7 @@ function createServer() {
                 .filter((k) => k);
             const threshold = parseFloat(urlObj.searchParams.get('threshold') || '0');
 
-            const ensureFeed = feed
-                ? fetchRSS(feed)
-                      .then((result) => {
-                          if (
-                              result &&
-                              result.rss &&
-                              result.rss.channel &&
-                              result.rss.channel[0] &&
-                              result.rss.channel[0].item
-                          ) {
-                              const items = result.rss.channel[0].item.slice(0, 50);
-                              return Promise.all(
-                                  items.map((it) => {
-                                      const articleText = `${it.title[0]}\n\n${it.description ? it.description[0] : ''}`;
-                                      let img = '';
-                                      if (it['media:content'] && it['media:content'][0] && it['media:content'][0].$.url) {
-                                          img = it['media:content'][0].$.url;
-                                      } else if (it.enclosure && it.enclosure[0] && it.enclosure[0].$.url) {
-                                          img = it.enclosure[0].$.url;
-                                      }
-                                      let published = '';
-                                      if (it.pubDate && it.pubDate[0]) published = it.pubDate[0];
-                                      else if (it.published && it.published[0]) published = it.published[0];
-                                      else if (it['dc:date'] && it['dc:date'][0]) published = it['dc:date'][0];
-                                      let pubIso = new Date().toISOString();
-                                      if (published) {
-                                          const d = new Date(published);
-                                          if (!isNaN(d.getTime())) pubIso = d.toISOString();
-                                      }
-
-                                      return getArticleByLink(it.link[0])
-                                          .catch(() => null)
-                                          .then((row) => {
-                                              if (row && row.embedding) return null;
-                                              return createEmbeddingPromise(articleText).then((emb) => {
-                                                  return saveArticle(it.title[0], it.link[0], emb, img, pubIso).catch(() => {});
-                                              });
-                                          });
-                                  }),
-                              );
-                          }
-                          return null;
-                      })
-                      .catch(() => null)
-                : Promise.resolve();
-
-            ensureFeed
-                .then(() => getArticles())
+            getArticles()
                 .then((rows) => {
                     const limited = rows.slice(0, 50);
                     const respond = (emb) => {

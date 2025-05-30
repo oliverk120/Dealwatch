@@ -12,11 +12,14 @@
     <div class="mb-4 space-y-2">
         <textarea id="queryText" class="border p-2 w-full" rows="3" placeholder="Enter text"></textarea>
         <input id="keywordsInput" class="border p-2 w-full" type="text" placeholder="Keywords (comma separated)" />
+
         <input id="feedInput" class="border p-2 w-full" type="text" placeholder="RSS feed URL (leave blank for database)" />
+
         <div class="flex items-center space-x-2">
             <label for="thresholdInput">Threshold:</label>
             <input id="thresholdInput" class="border p-1" type="number" min="0" max="1" step="0.01" value="0.8" />
             <button id="loadBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Load</button>
+            <button id="loadFeedBtn" class="bg-green-600 text-white px-4 py-2 rounded">Load Feed</button>
         </div>
         <div id="counts" class="text-sm text-gray-600"></div>
     </div>
@@ -33,7 +36,7 @@
         </tbody>
     </table>
     <script>
-        function loadResults(text) {
+        function loadResults(text, feedUrl) {
             const url = new URL('/experiment/search', window.location.origin);
             if (text) url.searchParams.set('text', text);
             const kw = document.getElementById('keywordsInput').value;
@@ -46,17 +49,33 @@
                 .then(r => r.json())
                 .then(data => {
                     const tbody = document.querySelector('#resultsTable tbody');
-                    tbody.innerHTML = data.results.map(row => {
-                        const sim = row.similarity === null || row.similarity === undefined ? '' : row.similarity.toFixed(2);
-                        const match = row.match ? 'Yes' : 'No';
-                        return `<tr><td class="border px-2 py-1">${row.id}</td><td class="border px-2 py-1"><a href="${row.link}" target="_blank">${row.title}</a></td><td class="border px-2 py-1">${sim}</td><td class="border px-2 py-1">${match}</td></tr>`;
-                    }).join('');
+                    if (!data || !Array.isArray(data.results)) {
+                        tbody.innerHTML = '';
+                        document.getElementById('counts').innerText = data && data.error ? data.error : 'Error loading data';
+                        return;
+                    }
+                    tbody.innerHTML = data.results
+                        .map(row => {
+                            const sim = row.similarity === null || row.similarity === undefined ? '' : row.similarity.toFixed(2);
+                            const match = row.match ? 'Yes' : 'No';
+                            return `<tr><td class="border px-2 py-1">${row.id}</td><td class="border px-2 py-1"><a href="${row.link}" target="_blank">${row.title}</a></td><td class="border px-2 py-1">${sim}</td><td class="border px-2 py-1">${match}</td></tr>`;
+                        })
+                        .join('');
                     document.getElementById('counts').innerText = `${data.filtered} of ${data.total} articles shown`;
+                })
+                .catch(() => {
+                    document.querySelector('#resultsTable tbody').innerHTML = '';
+                    document.getElementById('counts').innerText = 'Error loading data';
                 });
         }
         document.getElementById('loadBtn').addEventListener('click', () => {
             const text = document.getElementById('queryText').value;
             loadResults(text);
+        });
+        document.getElementById('loadFeedBtn').addEventListener('click', () => {
+            const text = document.getElementById('queryText').value;
+            const feedUrl = document.getElementById('feedInput').value;
+            loadResults(text, feedUrl);
         });
         window.addEventListener('load', () => loadResults(''));
     </script>

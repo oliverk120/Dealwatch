@@ -63,31 +63,30 @@ function createServer() {
             return;
         }
         if (urlObj.pathname === '/scrape') {
-            const siteUrl = urlObj.searchParams.get('url');
-            if (!siteUrl) {
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                const html = scraperTemplate.replace('{{rows}}', '');
-                res.end(html);
-            } else {
-                scrapeItems(siteUrl)
-                    .then((items) => {
-                        const rows = items
-                            .map(
-                                (it, i) =>
-                                    `<tr><td class="border px-2 py-1">${
-                                        i + 1
-                                    }</td><td class="border px-2 py-1">${it.title}</td><td class="border px-2 py-1"><a href="${it.link}" target="_blank">${it.link}</a></td></tr>`,
-                            )
-                            .join('');
-                        const html = scraperTemplate.replace('{{rows}}', rows);
-                        res.writeHead(200, { 'Content-Type': 'text/html' });
-                        res.end(html);
-                    })
-                    .catch((err) => {
-                        res.writeHead(500, { 'Content-Type': 'text/plain' });
-                        res.end('Error scraping site: ' + err.message);
-                    });
-            }
+            const defaultUrl =
+                'https://www.prnewswire.com/news-releases/financial-services-latest-news/acquisitions-mergers-and-takeovers-list/';
+            const siteUrl = urlObj.searchParams.get('url') || defaultUrl;
+
+            scrapeItems(siteUrl)
+                .then((items) => {
+                    const rows = items
+                        .map(
+                            (it, i) =>
+                                `<tr><td class="border px-2 py-1">${
+                                    i + 1
+                                }</td><td class="border px-2 py-1">${it.title}</td><td class="border px-2 py-1">${it.description || ''}</td><td class="border px-2 py-1"><a href="${it.link}" target="_blank">${it.link}</a></td></tr>`,
+                        )
+                        .join('');
+                    const html = scraperTemplate
+                        .replace('{{rows}}', rows)
+                        .replace('{{url}}', siteUrl);
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(html);
+                })
+                .catch((err) => {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Error scraping site: ' + err.message);
+                });
             return;
         }
         if (urlObj.pathname === '/database') {

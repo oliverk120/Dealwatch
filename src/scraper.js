@@ -1,12 +1,32 @@
 const { URL } = require('url');
 const builder = require('xmlbuilder');
 
+function parsePrnewswire(html, baseUrl) {
+    const regex = /<a[^>]+href="([^"]+)"[^>]*>\s*<h3[^>]*>([\s\S]*?)<\/h3>\s*<p class="remove-outline">([\s\S]*?)<\/p>/gi;
+    const items = [];
+    let match;
+    while ((match = regex.exec(html))) {
+        const link = new URL(match[1], baseUrl).href;
+        let titleHtml = match[2].replace(/<small[^>]*>.*?<\/small>/i, '');
+        const title = titleHtml.replace(/<[^>]*>/g, '').trim();
+        const description = match[3].replace(/<[^>]*>/g, '').trim();
+        items.push({ title, link, description });
+        if (items.length >= 10) break;
+    }
+    return items;
+}
+
 async function scrapeItems(targetUrl) {
     const res = await fetch(targetUrl);
     if (!res.ok) {
         throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`);
     }
     const html = await res.text();
+
+    const parsed = new URL(targetUrl);
+    if (/\.prnewswire\.com$/.test(parsed.hostname)) {
+        return parsePrnewswire(html, parsed);
+    }
 
     const anchorRegex = /<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
     const seen = new Set();
@@ -46,4 +66,4 @@ async function scrapeToRSS(targetUrl) {
     return buildRSS(targetUrl, items);
 }
 
-module.exports = { scrapeToRSS, scrapeItems, buildRSS };
+module.exports = { scrapeToRSS, scrapeItems, buildRSS, parsePrnewswire };

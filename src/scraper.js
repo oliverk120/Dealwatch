@@ -1,19 +1,38 @@
 const { URL } = require('url');
 const builder = require('xmlbuilder');
 
+const RULES_PRNEWSWIRE = {
+    title: '<h3> text minus <small>',
+    description: '<p class="remove-outline">',
+    link: 'href attribute of <a> tag',
+    published: '<h3><small> text; if only time, today\'s date used',
+};
+
 function parsePrnewswire(html, baseUrl) {
     const regex = /<a[^>]+href="([^"]+)"[^>]*>\s*<h3[^>]*>([\s\S]*?)<\/h3>\s*<p class="remove-outline">([\s\S]*?)<\/p>/gi;
     const items = [];
     let match;
     while ((match = regex.exec(html))) {
         const link = new URL(match[1], baseUrl).href;
-        let titleHtml = match[2].replace(/<small[^>]*>.*?<\/small>/i, '');
+        const h3Html = match[2];
+        const smallMatch = /<small[^>]*>(.*?)<\/small>/i.exec(h3Html);
+        let published = '';
+        if (smallMatch) {
+            published = smallMatch[1].replace(/ET/, '').trim();
+            if (/^\d{1,2}:\d{2}/.test(published)) {
+                const today = new Date().toISOString().split('T')[0];
+                published = `${today} ${published}`;
+            }
+            const d = new Date(published);
+            if (!isNaN(d.getTime())) published = d.toISOString();
+        }
+        let titleHtml = h3Html.replace(/<small[^>]*>.*?<\/small>/i, '');
         const title = titleHtml.replace(/<[^>]*>/g, '').trim();
         const description = match[3].replace(/<[^>]*>/g, '').trim();
-        items.push({ title, link, description });
+        items.push({ title, link, description, published });
         if (items.length >= 10) break;
     }
-    return items;
+    return { items, rules: RULES_PRNEWSWIRE };
 }
 
 async function scrapeItems(targetUrl) {
@@ -40,7 +59,13 @@ async function scrapeItems(targetUrl) {
         items.push({ title: text, link });
         if (items.length >= 10) break;
     }
-    return items;
+    const rules = {
+        title: 'text content of <a> tag',
+        link: 'href attribute of <a> tag',
+        description: '',
+        published: '',
+    };
+    return { items, rules };
 }
 
 function buildRSS(targetUrl, items) {
@@ -62,7 +87,7 @@ function buildRSS(targetUrl, items) {
 }
 
 async function scrapeToRSS(targetUrl) {
-    const items = await scrapeItems(targetUrl);
+    const { items } = await scrapeItems(targetUrl);
     return buildRSS(targetUrl, items);
 }
 

@@ -51,7 +51,8 @@ test('parsePrnewswire extracts articles', () => {
         </div>
     </div>`;
 
-    const items = parsePrnewswire(snippet, 'https://www.prnewswire.com/');
+    const result = parsePrnewswire(snippet, 'https://www.prnewswire.com/');
+    const items = result.items;
     assert.equal(items.length, 1);
     assert.equal(items[0].title, 'HOTEL101 PROGRESSES TOWARDS NASDAQ LISTING');
     assert.ok(items[0].description.startsWith('Hotel101 Global'));
@@ -59,4 +60,5 @@ test('parsePrnewswire extracts articles', () => {
         items[0].link,
         'https://www.prnewswire.com/news-releases/hotel101-progresses-towards-nasdaq-listing-302470771.html',
     );
+    assert.ok(items[0].published.startsWith(new Date().toISOString().split('T')[0]));
 });

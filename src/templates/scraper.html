@@ -14,6 +14,12 @@
         <input type="text" name="url" class="border p-2 mr-2 w-80" placeholder="Website URL" value="{{url}}" />
         <button type="submit" class="bg-blue-500 text-white px-4 py-2">Generate RSS</button>
     </form>
+    <div class="mt-4">
+        <p><strong>URL:</strong> {{url}}</p>
+        <ul class="list-disc pl-5">
+            {{rules}}
+        </ul>
+    </div>
     <table class="min-w-full border-collapse mt-4">
         <thead>
             <tr>
@@ -21,6 +27,7 @@
                 <th class="border px-2 py-1">Title</th>
                 <th class="border px-2 py-1">Description</th>
                 <th class="border px-2 py-1">Link</th>
+                <th class="border px-2 py-1">Published</th>
             </tr>
         </thead>
         <tbody>

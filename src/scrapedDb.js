@@ -15,8 +15,14 @@ function initScrapedDB(customPath) {
       url TEXT NOT NULL,
       title TEXT,
       description TEXT,
-      link TEXT,
+      link TEXT UNIQUE,
       published TEXT
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT UNIQUE,
+      instructions TEXT
     )`);
   });
 }
@@ -27,13 +33,73 @@ function saveScrapedArticle(url, title, description, link, published) {
       return reject(new Error('Database not initialized'));
     }
     db.run(
-      'INSERT INTO scraped_articles (url, title, description, link, published) VALUES (?, ?, ?, ?, ?)',
+      'INSERT OR IGNORE INTO scraped_articles (url, title, description, link, published) VALUES (?, ?, ?, ?, ?)',
       [url, title, description, link, published || null],
       function (err) {
         if (err) reject(err);
         else resolve(this.lastID);
       },
     );
+  });
+}
+
+function getScrapedArticleByLink(link) {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      return reject(new Error('Database not initialized'));
+    }
+    db.get(
+      'SELECT id, url, title, description, link, published FROM scraped_articles WHERE link = ?',
+      [link],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      },
+    );
+  });
+}
+
+function saveSource(url, instructions) {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      return reject(new Error('Database not initialized'));
+    }
+    db.run(
+      'INSERT OR REPLACE INTO sources (url, instructions) VALUES (?, ?)',
+      [url, instructions],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      },
+    );
+  });
+}
+
+function getSource(url) {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      return reject(new Error('Database not initialized'));
+    }
+    db.get(
+      'SELECT id, url, instructions FROM sources WHERE url = ?',
+      [url],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      },
+    );
+  });
+}
+
+function getSources() {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      return reject(new Error('Database not initialized'));
+    }
+    db.all('SELECT id, url, instructions FROM sources', (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
   });
 }
 
@@ -63,5 +129,9 @@ module.exports = {
   initScrapedDB,
   saveScrapedArticle,
   getScrapedArticles,
+  getScrapedArticleByLink,
+  saveSource,
+  getSource,
+  getSources,
   closeScrapedDB,
 };

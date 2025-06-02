@@ -16,6 +16,7 @@ const {
 const {
     initScrapedDB,
     saveScrapedArticle,
+    getSources,
 } = require('./scrapedDb');
 
 const mainTemplate = fs.readFileSync(
@@ -32,6 +33,10 @@ const experimentTemplate = fs.readFileSync(
 );
 const scraperTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'scraper.html'),
+    'utf8',
+);
+const indexTemplate = fs.readFileSync(
+    path.join(__dirname, 'templates', 'index.html'),
     'utf8',
 );
 
@@ -71,8 +76,11 @@ function createServer() {
                 'https://www.prnewswire.com/news-releases/financial-services-latest-news/acquisitions-mergers-and-takeovers-list/';
             const siteUrl = urlObj.searchParams.get('url') || defaultUrl;
 
-            scrapeItems(siteUrl)
-                .then(({ items, rules }) => {
+            Promise.all([scrapeItems(siteUrl), getSources()])
+                .then(([{ items, rules }, sources]) => {
+                    const options = sources
+                        .map((s) => `<option value="${s.url}">${s.url}</option>`)
+                        .join('');
                     const rows = items
                         .map(
                             (it, i) =>
@@ -90,7 +98,8 @@ function createServer() {
                     const html = scraperTemplate
                         .replace('{{rows}}', rows)
                         .replace('{{url}}', siteUrl)
-                        .replace('{{rules}}', rulesHtml);
+                        .replace('{{rules}}', rulesHtml)
+                        .replace('{{options}}', options);
                     items.forEach((it) => {
                         saveScrapedArticle(
                             siteUrl,
@@ -136,7 +145,12 @@ function createServer() {
                 });
             return;
         }
-        if (urlObj.pathname === '/' || urlObj.pathname === '/experiment') {
+        if (urlObj.pathname === '/') {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(indexTemplate);
+            return;
+        }
+        if (urlObj.pathname === '/experiment') {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(experimentTemplate);
             return;

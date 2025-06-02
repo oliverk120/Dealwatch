@@ -13,6 +13,10 @@ const {
     getArticles,
     getArticleByLink,
 } = require('./db');
+const {
+    initScrapedDB,
+    saveScrapedArticle,
+} = require('./scrapedDb');
 
 const mainTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'main.html'),
@@ -68,18 +72,34 @@ function createServer() {
             const siteUrl = urlObj.searchParams.get('url') || defaultUrl;
 
             scrapeItems(siteUrl)
-                .then((items) => {
+                .then(({ items, rules }) => {
                     const rows = items
                         .map(
                             (it, i) =>
                                 `<tr><td class="border px-2 py-1">${
                                     i + 1
-                                }</td><td class="border px-2 py-1">${it.title}</td><td class="border px-2 py-1">${it.description || ''}</td><td class="border px-2 py-1"><a href="${it.link}" target="_blank">${it.link}</a></td></tr>`,
+                                }</td><td class="border px-2 py-1">${it.title}</td><td class="border px-2 py-1">${it.description || ''}</td><td class="border px-2 py-1"><a href="${it.link}" target="_blank">${it.link}</a></td><td class="border px-2 py-1">${it.published || ''}</td></tr>`,
+                        )
+                        .join('');
+                    const rulesHtml = Object.entries(rules)
+                        .map(
+                            ([field, rule]) =>
+                                `<li><strong>${field}</strong>: ${rule}</li>`,
                         )
                         .join('');
                     const html = scraperTemplate
                         .replace('{{rows}}', rows)
-                        .replace('{{url}}', siteUrl);
+                        .replace('{{url}}', siteUrl)
+                        .replace('{{rules}}', rulesHtml);
+                    items.forEach((it) => {
+                        saveScrapedArticle(
+                            siteUrl,
+                            it.title,
+                            it.description || '',
+                            it.link,
+                            it.published || null,
+                        ).catch(() => {});
+                    });
                     res.writeHead(200, { 'Content-Type': 'text/html' });
                     res.end(html);
                 })
@@ -621,6 +641,7 @@ function createServer() {
 
 function startServer(port = 3000) {
     initDB();
+    initScrapedDB();
     const server = createServer();
     server.listen(port, () => {
         console.log(`Server running at http://localhost:${port}/`);

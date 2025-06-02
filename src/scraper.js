@@ -1,7 +1,7 @@
 const { URL } = require('url');
 const builder = require('xmlbuilder');
 
-async function scrapeToRSS(targetUrl) {
+async function scrapeItems(targetUrl) {
     const res = await fetch(targetUrl);
     if (!res.ok) {
         throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`);
@@ -20,7 +20,10 @@ async function scrapeToRSS(targetUrl) {
         items.push({ title: text, link });
         if (items.length >= 10) break;
     }
+    return items;
+}
 
+function buildRSS(targetUrl, items) {
     const rss = builder
         .create('rss', { version: '1.0', encoding: 'UTF-8' })
         .att('version', '2.0');
@@ -38,4 +41,9 @@ async function scrapeToRSS(targetUrl) {
     return rss.end({ pretty: true });
 }
 
-module.exports = { scrapeToRSS };
+async function scrapeToRSS(targetUrl) {
+    const items = await scrapeItems(targetUrl);
+    return buildRSS(targetUrl, items);
+}
+
+module.exports = { scrapeToRSS, scrapeItems, buildRSS };

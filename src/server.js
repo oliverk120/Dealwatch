@@ -6,18 +6,12 @@ const { fetchRSS } = require('./rss');
 const { createEmbeddingPromise } = require('./embeddings');
 const { cosineSimilarity } = require('./similarity');
 const { FilterManager } = require('./filters/filterManager');
-const { scrapeToRSS, scrapeItems } = require('./scraper');
 const {
     initDB,
     saveArticle,
     getArticles,
     getArticleByLink,
 } = require('./db');
-const {
-    initScrapedDB,
-    saveScrapedArticle,
-    getSources,
-} = require('./scrapedDb');
 
 const mainTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'main.html'),
@@ -29,10 +23,6 @@ const databaseTemplate = fs.readFileSync(
 );
 const experimentTemplate = fs.readFileSync(
     path.join(__dirname, 'templates', 'experiment.html'),
-    'utf8',
-);
-const scraperTemplate = fs.readFileSync(
-    path.join(__dirname, 'templates', 'scraper.html'),
     'utf8',
 );
 const indexTemplate = fs.readFileSync(
@@ -68,53 +58,6 @@ function createServer() {
                 .catch(() => {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     res.end('Error retrieving articles');
-                });
-            return;
-        }
-        if (urlObj.pathname === '/scrape') {
-            const defaultUrl =
-                'https://www.prnewswire.com/news-releases/financial-services-latest-news/acquisitions-mergers-and-takeovers-list/';
-            const siteUrl = urlObj.searchParams.get('url') || defaultUrl;
-
-            Promise.all([scrapeItems(siteUrl), getSources()])
-                .then(([{ items, rules }, sources]) => {
-                    const options = sources
-                        .map((s) => `<option value="${s.url}">${s.url}</option>`)
-                        .join('');
-                    const rows = items
-                        .map(
-                            (it, i) =>
-                                `<tr><td class="border px-2 py-1">${
-                                    i + 1
-                                }</td><td class="border px-2 py-1">${it.title}</td><td class="border px-2 py-1">${it.description || ''}</td><td class="border px-2 py-1"><a href="${it.link}" target="_blank">${it.link}</a></td><td class="border px-2 py-1">${it.published || ''}</td></tr>`,
-                        )
-                        .join('');
-                    const rulesHtml = Object.entries(rules)
-                        .map(
-                            ([field, rule]) =>
-                                `<li><strong>${field}</strong>: ${rule}</li>`,
-                        )
-                        .join('');
-                    const html = scraperTemplate
-                        .replace('{{rows}}', rows)
-                        .replace('{{url}}', siteUrl)
-                        .replace('{{rules}}', rulesHtml)
-                        .replace('{{options}}', options);
-                    items.forEach((it) => {
-                        saveScrapedArticle(
-                            siteUrl,
-                            it.title,
-                            it.description || '',
-                            it.link,
-                            it.published || null,
-                        ).catch(() => {});
-                    });
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end(html);
-                })
-                .catch((err) => {
-                    res.writeHead(500, { 'Content-Type': 'text/plain' });
-                    res.end('Error scraping site: ' + err.message);
                 });
             return;
         }
@@ -655,7 +598,6 @@ function createServer() {
 
 function startServer(port = 3000) {
     initDB();
-    initScrapedDB();
     const server = createServer();
     server.listen(port, () => {
         console.log(`Server running at http://localhost:${port}/`);

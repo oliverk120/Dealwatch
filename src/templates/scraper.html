@@ -11,7 +11,11 @@
         <a href="/scrape" class="text-blue-600">Scraper</a>
     </nav>
     <form>
-        <input type="text" name="url" class="border p-2 mr-2 w-80" placeholder="Website URL" value="{{url}}" />
+        <select id="sourceSelect" class="border p-2 mr-2" onchange="document.getElementById('urlInput').value=this.value">
+            <option value="">-- choose source --</option>
+            {{options}}
+        </select>
+        <input id="urlInput" type="text" name="url" class="border p-2 mr-2 w-80" placeholder="Website URL" value="{{url}}" />
         <button type="submit" class="bg-blue-500 text-white px-4 py-2">Generate RSS</button>
     </form>
     <div class="mt-4">

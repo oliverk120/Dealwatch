@@ -1,5 +1,6 @@
 const { URL } = require('url');
 const builder = require('xmlbuilder');
+const { saveSource } = require('./scrapedDb');
 
 const RULES_PRNEWSWIRE = {
     title: '<h3> text minus <small>',
@@ -44,7 +45,9 @@ async function scrapeItems(targetUrl) {
 
     const parsed = new URL(targetUrl);
     if (/\.prnewswire\.com$/.test(parsed.hostname)) {
-        return parsePrnewswire(html, parsed);
+        const result = parsePrnewswire(html, parsed);
+        await saveSource(parsed.hostname, JSON.stringify(result.rules)).catch(() => {});
+        return result;
     }
 
     const anchorRegex = /<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
@@ -65,6 +68,7 @@ async function scrapeItems(targetUrl) {
         description: '',
         published: '',
     };
+    await saveSource(parsed.hostname, JSON.stringify(rules)).catch(() => {});
     return { items, rules };
 }
 
